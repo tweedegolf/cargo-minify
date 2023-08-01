@@ -17,6 +17,7 @@ version = "0.5.0"
 dependencies = [
  "cargo_metadata",
  "gumdrop",
+ "multimap",
 ]
 
 [[package]]
@@ -67,6 +68,15 @@ name = "itoa"
 version = "1.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af150ab688ff2122fcef229be89cb50dd66af9e01a4ff320cc137eecc9bacc38"
+
+[[package]]
+name = "multimap"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "70db9248a93dc36a36d9a47898caa007a32755c7ad140ec64eeeb50d5a730631"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "proc-macro2"

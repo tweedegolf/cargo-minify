@@ -1,3 +1,4 @@
+use cargo_metadata::diagnostic::DiagnosticSpan;
 use std::ops::Range;
 
 /// Turns a list of "locations of identifiers" into a list of "chunk
@@ -58,6 +59,9 @@ fn rust_identifiers_to_definitions<'a>(
     })
 }
 
+/// Deletes a list-of-positions-of-identifiers from a bytearray that is valid rust code
+/// BUGS: if the position is in the body of a function, it will try to delete identifiers there
+/// ...  probably?
 pub fn rust_delete(src: &[u8], locations: impl IntoIterator<Item = usize>) -> Vec<u8> {
     let chunks_to_delete = rust_identifiers_to_definitions(src, locations).collect::<Vec<_>>();
     src.iter()
@@ -70,6 +74,46 @@ pub fn rust_delete(src: &[u8], locations: impl IntoIterator<Item = usize>) -> Ve
             }
         })
         .collect()
+}
+
+/// Processes a list of file+list-of-edits into an iterator of filenames+proposed new contents
+fn process_files<'a, Iter: IntoIterator<Item = usize>>(
+    diagnostics: impl Iterator<Item = (&'a str, Iter)>,
+) -> impl Iterator<Item = (&'a str, Vec<u8>)> {
+    diagnostics.filter_map(|(source, byte_locations)| {
+        let bytes = std::fs::read(source).ok()?;
+
+        Some((source, rust_delete(&bytes, byte_locations)))
+    })
+}
+
+/// Process a list of UnusedDiagnostics into an iterator of filenames+proposed contents
+/// BUGS: this does not check that the diagnostic is a "unused diagnostic"
+pub fn process_diagnostics<'a>(
+    diagnostics: impl IntoIterator<Item = &'a DiagnosticSpan>,
+) -> impl Iterator<Item = (&'a str, Vec<u8>)> {
+    process_files(
+        diagnostics
+            .into_iter()
+            .map(|span| (span.file_name.as_str(), span.byte_start as usize))
+            .collect::<multimap::MultiMap<_, _>>()
+            .into_iter(),
+    )
+}
+
+/// DANGER
+pub fn commit_changes<'a>(
+    changes: impl Iterator<Item = (&'a str, Vec<u8>)>,
+) -> Result<(), Vec<std::io::Error>> {
+    let errors = changes
+        .filter_map(|(file, contents)| std::fs::write(file, contents).err())
+        .collect::<Vec<_>>();
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors)
+    }
 }
 
 #[cfg(test)]
