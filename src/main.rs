@@ -19,6 +19,9 @@ struct MinifyOptions {
 
     #[options(no_short, help = "path to Cargo.toml")]
     manifest_path: bool,
+
+
+    //TODO: probably also specify which file to minify
 }
 
 /// Function that checks whether the vcs in the given directory is in a "dirty" state
@@ -29,12 +32,14 @@ fn vcs_is_dirty(path: impl AsRef<Path>) -> bool {
 fn main() {
     // Drop the first actual argument if it is equal to our subcommand
     // (i.e. we are being called via 'cargo')
-    let args = env::args()
-        .enumerate()
-        .filter_map(|(n, arg)| (n != 1 || arg != SUBCOMMAND_NAME).then_some(arg))
-        .collect::<Vec<_>>();
+    let mut args = env::args().peekable();
+    args.next();
 
-    let exit_status = execute(&args[1..]);
+    if args.peek().map(|s| -> &str { s }) == Some(SUBCOMMAND_NAME) {
+        args.next();
+    }
+
+    let exit_status = execute(&args.collect::<Vec<_>>());
 
     std::io::stdout().flush().unwrap();
     std::process::exit(exit_status);
