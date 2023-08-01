@@ -60,7 +60,7 @@ mod test {
         //                            1         2         3         4         5
         let pos =
             rust_identifiers_to_definitions(src, [0usize, 4usize, 12, 19, 40]).collect::<Vec<_>>();
-        assert_eq!(pos, vec![(0, 9), (0, 9), (9, 33), (9, 33), (33, 57)]);
+        assert_eq!(pos, vec![0..9, 0..9, 9..33, 9..33, 33..57]);
     }
 
     #[test]
