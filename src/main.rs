@@ -56,7 +56,7 @@ fn main() -> Result<()> {
     let mut args = env::args().peekable();
     args.next();
 
-    if args.peek().map(|s| -> &str { s }) == Some(SUBCOMMAND_NAME) {
+    if args.peek().map(|s| s.as_str()) == Some(SUBCOMMAND_NAME) {
         args.next();
     }
 

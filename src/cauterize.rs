@@ -1,7 +1,9 @@
 use cargo_metadata::diagnostic::DiagnosticSpan;
 use std::ops::Range;
+use std::path::Path;
 
 /// Turns a list of "locations of identifiers" into a list of "chunk
+/// BUGS: this is not safe for use on macros
 fn rust_identifiers_to_definitions<'a>(
     src: &'a [u8],
     locations: impl IntoIterator<Item = usize> + 'a,
@@ -102,8 +104,8 @@ pub fn process_diagnostics<'a>(
 }
 
 /// DANGER
-pub fn commit_changes<'a>(
-    changes: impl Iterator<Item = (&'a str, Vec<u8>)>,
+pub fn commit_changes(
+    changes: impl Iterator<Item = (impl AsRef<Path>, Vec<u8>)>,
 ) -> Result<(), Vec<std::io::Error>> {
     let errors = changes
         .filter_map(|(file, contents)| std::fs::write(file, contents).err())

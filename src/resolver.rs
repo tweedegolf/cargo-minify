@@ -1,6 +1,8 @@
 //! This module contains the functionality necessary to find which packages the
 //! user wants to minify.
 
+// TODO: credit rustfmt in the copyright notice in this file
+
 use std::{
     collections::{BTreeSet, HashSet},
     env, io,
