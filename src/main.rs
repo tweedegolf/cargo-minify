@@ -21,8 +21,6 @@ struct MinifyOptions {
 
     #[options(no_short, help = "path to Cargo.toml")]
     manifest_path: bool,
-
-
     //TODO: probably also specify which file to minify
 }
 
