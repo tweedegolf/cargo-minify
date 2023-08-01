@@ -1,6 +1,8 @@
 use gumdrop::Options;
 use std::{env, io::Write, path::Path};
 
+mod cauterize;
+
 const SUBCOMMAND_NAME: &str = "minify";
 
 #[derive(Debug, Options)]
