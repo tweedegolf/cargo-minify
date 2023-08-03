@@ -153,4 +153,23 @@ mod test {
             b"fn foo(); fn foo -> huk { barf; } "
         );
     }
+
+    #[test]
+    fn formatting_preserval_test() {
+        let src = b" fn foo();  fn foo  -> huk {  barf; }   constant FOO: i32 = 42;  ";
+        //          0123456789012345678901234567890123456789012345678901234567
+        //                    1         2         3         4         5
+        assert_eq!(
+            rust_delete(src, [5usize]),
+            b"fn foo  -> huk {  barf; }   constant FOO: i32 = 42;  "
+        );
+        assert_eq!(
+            rust_delete(src, [15usize]),
+            b" fn foo(); constant FOO: i32 = 42;  "
+        );
+        assert_eq!(
+            rust_delete(src, [42usize]),
+            b" fn foo();  fn foo  -> huk {  barf; } "
+        );
+    }
 }
