@@ -1,15 +1,13 @@
 use std::{
-    collections::HashSet,
+    collections::BTreeMap,
     env, io,
-    io::{BufReader, Write},
+    io::Write,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
 };
 
-use cargo_metadata::{Message, Target};
 use gumdrop::Options;
 
-use crate::{error::Result, unused::UnusedDiagnostic};
+use crate::error::Result;
 
 mod error;
 mod resolver;
@@ -21,27 +19,25 @@ const SUBCOMMAND_NAME: &str = "minify";
 
 #[derive(Debug, Options)]
 struct MinifyOptions {
-    #[options(help = "print help message")]
+    #[options(help = "No output printed to stdout")]
+    quiet: bool,
+
+    #[options(help = "Package to minify")]
+    package: Vec<String>,
+    #[options(no_short, help = "Minify all packages in the workspace")]
+    workspace: bool,
+
+    #[options(no_short, help = "Apply changes instead of outputting a diff")]
+    apply: bool,
+
+    #[options(help = "Print help message")]
     help: bool,
 
-    #[options(no_short, help = "actually apply changes instead of outputting a diff")]
-    fix: bool,
-
-    #[options(
-        no_short,
-        help = "really apply changes even if this is NOT recommended and will lead to loss of code"
-    )]
-    yes_damnit: bool,
-
-    #[options(no_short, help = "path to Cargo.toml")]
+    #[options(no_short, help = "Path to Cargo.toml")]
     manifest_path: Option<String>,
 
-    #[options(help = "package to minify")]
-    package: Vec<String>,
-    #[options(no_short, help = "minify all packages in the workspace")]
-    workspace: bool,
-    #[options(help = "exclude packages from the build")]
-    exclude: Vec<String>,
+    #[options(no_short, help = "Fix code even if the working directory is dirty")]
+    allow_dirty: bool,
 }
 
 /// Function that checks whether the vcs in the given directory is in a "dirty"
@@ -78,38 +74,36 @@ fn execute(args: &[String]) -> Result<()> {
     } else {
         let manifest_path = opts.manifest_path.map(PathBuf::from);
         let package = &opts.package[..];
-        let exclude = &opts.package[..];
-        let targets =
-            resolver::get_targets(manifest_path.as_deref(), package, opts.workspace, exclude)?;
+        let targets = resolver::get_targets(manifest_path.as_deref(), package, opts.workspace)?;
+        // TODO: Remove collect
+        let unused: Vec<_> = unused::get_unused(&targets)?.collect();
+        let spans = unused.iter().map(|diagnostic| diagnostic.span());
 
-        for unused in unused(&targets)? {
-            println!("{:#?}", unused);
+        let changes: BTreeMap<PathBuf, _> = cauterize::process_diagnostics(spans)
+            .map(|(file, content)| (PathBuf::from(file), content))
+            .collect();
+
+        if !opts.quiet {
+            for (file, content) in &changes {
+                let content = String::from_utf8(content.clone()).unwrap();
+                println!("--------------------------------------------------");
+                println!("{:?}", file);
+                println!("{content}");
+            }
+        }
+
+        if opts.apply {
+            if opts.allow_dirty || !vcs_is_dirty("") {
+                // TODO: Remove unwrap
+                cauterize::commit_changes(changes).unwrap();
+            } else {
+                eprintln!(
+                    "working directory is dirty, please commit your changes or ignore this \
+                     warning with --allow-dirty"
+                );
+            }
         }
     }
 
     Ok(())
-}
-
-fn unused(targets: &HashSet<Target>) -> Result<impl Iterator<Item = UnusedDiagnostic> + '_> {
-    let mut command = Command::new("cargo");
-    command.args(["check", "--message-format", "json"]);
-
-    let mut child = command.stdout(Stdio::piped()).spawn()?;
-    let stdout = child.stdout.take().unwrap();
-    let reader = BufReader::new(stdout);
-
-    let unused = Message::parse_stream(reader)
-        .flatten()
-        .filter_map(|message| {
-            if let Message::CompilerMessage(message) = message {
-                Some(message)
-            } else {
-                None
-            }
-        })
-        .filter(|message| targets.contains(&message.target))
-        .map(|message| message.message)
-        .filter_map(|diagnostic| UnusedDiagnostic::try_from(diagnostic).ok());
-
-    Ok(unused)
 }

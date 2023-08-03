@@ -17,7 +17,6 @@ pub fn get_targets(
     manifest_path: Option<&Path>,
     package: &[String],
     workspace: bool,
-    exclude: &[String],
 ) -> Result<HashSet<Target>> {
     let mut targets = HashSet::new();
 
