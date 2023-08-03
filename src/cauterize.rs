@@ -3,6 +3,7 @@ use std::{ops::Range, path::Path};
 use cargo_metadata::diagnostic::DiagnosticSpan;
 
 const SPACE: u8 = b' ';
+const NEWLINE: u8 = b'\n';
 
 /// Turns a list of "locations of identifiers" into a list of "chunk
 /// BUGS: this is not safe for use on macros
@@ -15,11 +16,11 @@ fn rust_identifiers_to_definitions<'a>(
             .iter()
             .rposition(|x| b";}{".contains(x))
             .map(|i| {
-                if src[i + 1].is_ascii_whitespace() {
-                    i + 2
-                } else {
-                    i + 1
-                }
+                (i + 1..pos)
+                    .take_while(|&k| src[k].is_ascii_whitespace())
+                    .last()
+                    .map(|j| j + 1)
+                    .unwrap_or(i + 1)
             })
             .unwrap_or(0);
         let next = src[pos..]
@@ -54,6 +55,7 @@ fn rust_identifiers_to_definitions<'a>(
                     .iter()
                     .position(|c| *c != SPACE)
                     .map(|k| i + k)
+                    .map(|pos| if src[pos] == NEWLINE { pos + 1 } else { pos })
                     .unwrap_or(src.len())
             })
             .unwrap_or(src.len());
@@ -166,15 +168,15 @@ mod test {
         );
         assert_eq!(
             rust_delete(src, [15usize]),
-            b" fn foo(); constant FOO: i32 = 42;  fn bar(){ } "
+            b" fn foo();  constant FOO: i32 = 42;  fn bar(){ } "
         );
         assert_eq!(
             rust_delete(src, [42usize]),
-            b" fn foo();  fn foo  -> huk {  barf; } fn bar(){ } "
+            b" fn foo();  fn foo  -> huk {  barf; }   fn bar(){ } "
         );
         assert_eq!(
             rust_delete(src, [70usize]),
-            b" fn foo();  fn foo  -> huk {  barf; }   constant FOO: i32 = 42; "
+            b" fn foo();  fn foo  -> huk {  barf; }   constant FOO: i32 = 42;  "
         );
 
         assert_eq!(
@@ -183,7 +185,7 @@ mod test {
         );
         assert_eq!(
             rust_delete(src, [15usize, 42usize]),
-            b" fn foo(); fn bar(){ } "
+            b" fn foo();  fn bar(){ } "
         );
     }
 
@@ -208,7 +210,7 @@ mod test {
         let src = b" fn foo() {}\nfn fixme() {}\nfn main() {}";
         assert_eq!(
             rust_delete(src, [15usize]),
-            b" fn foo() {}\n\nfn main() {}"
+            b" fn foo() {}\nfn main() {}"
         );
         let src = b" fn foo() {}\n\nfn fixme() {}\nfn main() {}";
         assert_eq!(
@@ -218,7 +220,7 @@ mod test {
         let src = b" fn foo() {}\nfn fixme() {}\n\nfn main() {}";
         assert_eq!(
             rust_delete(src, [15usize]),
-            b" fn foo() {}\n\n\nfn main() {}"
+            b" fn foo() {}\n\nfn main() {}"
         );
         let src = b" fn foo() {}\n\nfn fixme() {}\n\nfn main() {}";
         assert_eq!(
@@ -228,7 +230,7 @@ mod test {
         let src = b"fn foo() {}\n         fn fixme() {}\n   fn main() {}";
         assert_eq!(
             rust_delete(src, [17usize]),
-            b"fn foo() {}\n\n   fn main() {}"
+            b"fn foo() {}\n   fn main() {}"
         );
     }
 }
