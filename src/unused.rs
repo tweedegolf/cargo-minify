@@ -13,7 +13,8 @@ use cargo_metadata::{
 };
 
 use crate::error::Result;
-
+type Y = X;
+struct X;
 pub fn get_unused(
     targets: &HashSet<Target>,
 ) -> Result<impl Iterator<Item = UnusedDiagnostic> + '_> {
@@ -58,29 +59,55 @@ impl TryFrom<Diagnostic> for UnusedDiagnostic {
 
     fn try_from(value: Diagnostic) -> Result<Self, Self::Error> {
         let message = value.message;
-
-        let (kind, message) = message.split_once(' ').ok_or(NotUnusedDiagnostic)?;
-        let kind = UnusedDiagnosticKind::from_str(kind)?;
-
-        let (mut ident, message) = message.split_once(' ').ok_or(NotUnusedDiagnostic)?;
-        ident = ident.strip_prefix('`').ok_or(NotUnusedDiagnostic)?;
-        ident = ident.strip_suffix('`').ok_or(NotUnusedDiagnostic)?;
-        let ident = ident.to_owned();
-
-        if message != "is never used" {
-            return Err(NotUnusedDiagnostic);
-        }
-
         let span = value.spans.into_iter().next().ok_or(NotUnusedDiagnostic)?;
 
-        Ok(UnusedDiagnostic { kind, ident, span })
+        let (first, message) = message.split_once(' ').ok_or(NotUnusedDiagnostic)?;
+        match UnusedDiagnosticKind::from_str(first) {
+            Ok(kind) => {
+                let (mut ident, message) = message.split_once(' ').ok_or(NotUnusedDiagnostic)?;
+                ident = ident.strip_prefix('`').ok_or(NotUnusedDiagnostic)?;
+                ident = ident.strip_suffix('`').ok_or(NotUnusedDiagnostic)?;
+                let ident = ident.to_owned();
+
+                if message != "is never used" {
+                    return Err(NotUnusedDiagnostic);
+                }
+
+                Ok(UnusedDiagnostic { kind, ident, span })
+            }
+            Err(_) => {
+                if first != "unused" {
+                    return Err(NotUnusedDiagnostic);
+                }
+
+                let (mut kind, message) = message.split_once(' ').ok_or(NotUnusedDiagnostic)?;
+                kind = kind.strip_suffix(':').ok_or(NotUnusedDiagnostic)?;
+                let kind: UnusedDiagnosticKind = kind.parse()?;
+
+                if kind != UnusedDiagnosticKind::Variable {
+                    return Err(NotUnusedDiagnostic);
+                }
+
+                let (mut ident, message) = message.split_once(' ').ok_or(NotUnusedDiagnostic)?;
+                ident = ident.strip_prefix('`').ok_or(NotUnusedDiagnostic)?;
+                ident = ident.strip_suffix('`').ok_or(NotUnusedDiagnostic)?;
+                let ident = ident.to_owned();
+
+                if !message.is_empty() {
+                    return Err(NotUnusedDiagnostic);
+                }
+
+                Ok(UnusedDiagnostic { kind, ident, span })
+            }
+        }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum UnusedDiagnosticKind {
     Constant,
     Function,
+    Variable,
 }
 
 impl FromStr for UnusedDiagnosticKind {
@@ -90,6 +117,7 @@ impl FromStr for UnusedDiagnosticKind {
         match s {
             "constant" => Ok(UnusedDiagnosticKind::Constant),
             "function" => Ok(UnusedDiagnosticKind::Function),
+            "variable" => Ok(UnusedDiagnosticKind::Variable),
             _ => Err(NotUnusedDiagnostic),
         }
     }
