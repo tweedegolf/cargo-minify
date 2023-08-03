@@ -2,6 +2,8 @@ use std::{ops::Range, path::Path};
 
 use cargo_metadata::diagnostic::DiagnosticSpan;
 
+const SPACE: u8 = b' ';
+
 /// Turns a list of "locations of identifiers" into a list of "chunk
 /// BUGS: this is not safe for use on macros
 fn rust_identifiers_to_definitions<'a>(
@@ -50,7 +52,7 @@ fn rust_identifiers_to_definitions<'a>(
 
                 src[i..]
                     .iter()
-                    .position(|c| !c.is_ascii_whitespace())
+                    .position(|c| *c != SPACE)
                     .map(|k| i + k)
                     .unwrap_or(src.len())
             })
@@ -186,15 +188,47 @@ mod test {
     }
 
     #[test]
+    #[rustfmt::skip]
     fn whitespace_semi_preserval() {
         let src = b" fn foo() {} fn fixme() {} fn main() {}";
-        assert_eq!(rust_delete(src, [15usize]), b" fn foo() {} fn main() {}");
+        assert_eq!(
+            rust_delete(src, [15usize]),
+            b" fn foo() {} fn main() {}"
+        );
         let src = b" fn foo() {} fn fixme() {}fn main() {}";
-        assert_eq!(rust_delete(src, [15usize]), b" fn foo() {} fn main() {}");
+        assert_eq!(
+            rust_delete(src, [15usize]),
+            b" fn foo() {} fn main() {}"
+        );
         let src = b" fn foo() {}fn fixme() {} fn main() {}";
-        assert_eq!(rust_delete(src, [15usize]), b" fn foo() {}fn main() {}");
-        //FIXME: this test case
+        assert_eq!(
+            rust_delete(src, [15usize]),
+            b" fn foo() {}fn main() {}"
+        );
+        let src = b" fn foo() {}\nfn fixme() {}\nfn main() {}";
+        assert_eq!(
+            rust_delete(src, [15usize]),
+            b" fn foo() {}\n\nfn main() {}"
+        );
+        let src = b" fn foo() {}\n\nfn fixme() {}\nfn main() {}";
+        assert_eq!(
+            rust_delete(src, [15usize]),
+            b" fn foo() {}\n\nfn main() {}"
+        );
+        let src = b" fn foo() {}\nfn fixme() {}\n\nfn main() {}";
+        assert_eq!(
+            rust_delete(src, [15usize]),
+            b" fn foo() {}\n\n\nfn main() {}"
+        );
         let src = b" fn foo() {}\n\nfn fixme() {}\n\nfn main() {}";
-        assert_eq!(rust_delete(src, [15usize]), b" fn foo() {}\nfn main() {}");
+        assert_eq!(
+            rust_delete(src, [15usize]),
+            b" fn foo() {}\n\n\nfn main() {}"
+        );
+        let src = b"fn foo() {}\n         fn fixme() {}\n   fn main() {}";
+        assert_eq!(
+            rust_delete(src, [17usize]),
+            b"fn foo() {}\n\n   fn main() {}"
+        );
     }
 }
