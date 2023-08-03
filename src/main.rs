@@ -9,11 +9,11 @@ use gumdrop::Options;
 
 use crate::error::Result;
 
+mod cauterize;
 mod error;
 mod resolver;
+mod test;
 mod unused;
-
-mod cauterize;
 
 const SUBCOMMAND_NAME: &str = "minify";
 
@@ -62,9 +62,6 @@ fn main() -> Result<()> {
 
     Ok(())
 }
-
-const SUCCESS: i32 = 0;
-const FAILURE: i32 = 1;
 
 fn execute(args: &[String]) -> Result<()> {
     let opts = MinifyOptions::parse_args_default(args).expect("internal error");
