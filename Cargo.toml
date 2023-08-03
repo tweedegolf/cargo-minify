@@ -5,6 +5,9 @@ edition = "2021"
 
 [dependencies]
 cargo_metadata = "0.17"
+diff = "0.1.13"
+git2 = "0.17"
 gumdrop = "0.8"
 multimap = "0.9"
-git2 = "0.17"
+nu-ansi-term = "0.49.0"
+thiserror = "1.0.44"

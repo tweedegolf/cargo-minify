@@ -1,10 +1,12 @@
-use std::{collections::BTreeMap, env, io, io::Write, path::PathBuf};
+use std::{ env, io, io::Write, path::PathBuf};
 
 use gumdrop::Options;
+use nu_ansi_term::Color;
 
-use crate::error::Result;
+use crate::{diff_format::ColorMode, error::Result};
 
 mod cauterize;
+mod diff_format;
 mod error;
 mod resolver;
 mod test;
@@ -27,6 +29,9 @@ struct MinifyOptions {
 
     #[options(help = "Print help message")]
     help: bool,
+
+    #[options(no_short, help = "Coloring: auto, always, never")]
+    color: ColorMode,
 
     #[options(no_short, help = "Path to Cargo.toml")]
     manifest_path: Option<String>,
@@ -73,16 +78,22 @@ fn execute(args: &[String]) -> Result<()> {
         let unused: Vec<_> = unused::get_unused(&targets)?.collect();
         let spans = unused.iter().map(|diagnostic| diagnostic.span());
 
-        let changes: BTreeMap<PathBuf, _> = cauterize::process_diagnostics(spans)
-            .map(|(file, content)| (PathBuf::from(file), content))
-            .collect();
+        let changes: Vec<_> = cauterize::process_diagnostics(spans).collect();
 
         if !opts.quiet {
-            for (file, content) in &changes {
-                let content = String::from_utf8(content.clone()).unwrap();
-                println!("--------------------------------------------------");
-                println!("{:?}", file);
-                println!("{content}");
+            for change in &changes {
+                let text = format!("#\n#\tshowing diff for {:?}:\n#", change.file_name());
+                if opts.color.enabled() {
+                    println!("{}", Color::DarkGray.paint(text));
+                } else {
+                    println!("{text}")
+                }
+
+                diff_format::println(
+                    change.original_content(),
+                    change.proposed_content(),
+                    opts.color,
+                );
             }
         }
 

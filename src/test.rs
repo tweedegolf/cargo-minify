@@ -31,9 +31,9 @@ union Baz {
 
 type Qux = Bar;
 
-/// Let's finish with yet another extremely useful module.
-mod used_as_well {}
-
 extern "C" {
     fn baz();
 }
+
+/// Let's finish with yet another extremely useful module.
+mod used_as_well {}

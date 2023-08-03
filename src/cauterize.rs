@@ -1,9 +1,32 @@
-use std::{ops::Range, path::Path};
+use std::{
+    ops::Range,
+    path::{Path, PathBuf},
+};
 
 use cargo_metadata::diagnostic::DiagnosticSpan;
 
 const SPACE: u8 = b' ';
 const NEWLINE: u8 = b'\n';
+
+pub struct Change {
+	file_name: PathBuf,
+	original_content: Vec<u8>,
+	proposed_content: Vec<u8>,
+}
+
+impl Change {
+	pub fn file_name(&self) -> &Path {
+		&self.file_name
+	}
+
+	pub fn original_content(&self) -> &[u8] {
+		&self.original_content
+	}
+
+	pub fn proposed_content(&self) -> &[u8] {
+		&self.proposed_content
+	}
+}
 
 /// Turns a list of "locations of identifiers" into a list of "chunk
 /// BUGS: this is not safe for use on macros
@@ -84,13 +107,22 @@ pub fn rust_delete(src: &[u8], locations: impl IntoIterator<Item = usize>) -> Ve
 /// Processes a list of file+list-of-edits into an iterator of
 /// filenames+proposed new contents
 fn process_files<'a, Iter: IntoIterator<Item = usize>>(
-    diagnostics: impl Iterator<Item = (&'a str, Iter)>,
-) -> impl Iterator<Item = (&'a str, Vec<u8>)> {
-    diagnostics.filter_map(|(source, byte_locations)| {
-        let bytes = std::fs::read(source).ok()?;
+    diagnostics: impl IntoIterator<Item = (PathBuf, Iter)>,
+) -> impl Iterator<Item = Change> {
+    diagnostics
+        .into_iter()
+        .filter_map(|(file_name, byte_locations)| {
+            let original_content = std::fs::read(&file_name).ok()?;
+            let proposed_content = rust_delete(&original_content, byte_locations);
 
-        Some((source, rust_delete(&bytes, byte_locations)))
-    })
+            let change = Change {
+                file_name,
+                original_content,
+                proposed_content,
+            };
+
+            Some(change)
+        })
 }
 
 /// Process a list of UnusedDiagnostics into an iterator of filenames+proposed
@@ -98,23 +130,23 @@ fn process_files<'a, Iter: IntoIterator<Item = usize>>(
 /// diagnostic"
 pub fn process_diagnostics<'a>(
     diagnostics: impl IntoIterator<Item = &'a DiagnosticSpan>,
-) -> impl Iterator<Item = (&'a str, Vec<u8>)> {
+) -> impl Iterator<Item = Change> {
     process_files(
         diagnostics
             .into_iter()
-            .map(|span| (span.file_name.as_str(), span.byte_start as usize))
+            .map(|span| (PathBuf::from(&span.file_name), span.byte_start as usize))
             .collect::<multimap::MultiMap<_, _>>()
             .into_iter(),
     )
 }
 
 /// DANGER
-pub fn commit_changes(
-    changes: impl IntoIterator<Item = (impl AsRef<Path>, Vec<u8>)>,
+pub fn commit_changes<'a>(
+    changes: impl IntoIterator<Item = Change>,
 ) -> Result<(), Vec<std::io::Error>> {
     let errors = changes
         .into_iter()
-        .filter_map(|(file, contents)| std::fs::write(file, contents).err())
+        .filter_map(|change| std::fs::write(change.file_name, change.proposed_content).err())
         .collect::<Vec<_>>();
 
     if errors.is_empty() {
