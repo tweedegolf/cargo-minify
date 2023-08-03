@@ -13,7 +13,7 @@ fn rust_identifiers_to_definitions<'a>(
     locations.into_iter().map(|pos| {
         let prev = src[..pos]
             .iter()
-            .rposition(|x| b";}".contains(x))
+            .rposition(|x| b";}{".contains(x))
             .map(|i| {
                 if src[i + 1].is_ascii_whitespace() {
                     i + 2
