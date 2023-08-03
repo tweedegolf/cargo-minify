@@ -29,10 +29,6 @@ fn rust_identifiers_to_definitions<'a>(
                 let mut level = 0;
                 let mut in_quote = None;
                 loop {
-                    if i == src.len() {
-                        return i;
-                    }
-
                     match src[i] {
                         x if Some(x) == in_quote => in_quote = None,
                         _ if in_quote.is_some() => {}
@@ -44,6 +40,9 @@ fn rust_identifiers_to_definitions<'a>(
                     }
                     i += 1;
 
+                    if i == src.len() {
+                        return i;
+                    }
                     if level == 0 {
                         break;
                     }
@@ -126,7 +125,7 @@ mod test {
     use super::*;
 
     #[test]
-    fn test_identifier_to_definition() {
+    fn identifier_to_definition() {
         let src = b"fn foo(); fn foo -> huk { barf; } constant FOO: i32 = 42;";
         //          012345678901234567890123456789012345678901234567890123456
         //                    1         2         3         4         5
@@ -136,7 +135,7 @@ mod test {
     }
 
     #[test]
-    fn deletion_test() {
+    fn deletion() {
         let src = b"fn foo(); fn foo -> huk { barf; } constant FOO: i32 = 42;";
         //          012345678901234567890123456789012345678901234567890123456
         //                    1         2         3         4         5
@@ -155,21 +154,47 @@ mod test {
     }
 
     #[test]
-    fn formatting_preserval_test() {
-        let src = b" fn foo();  fn foo  -> huk {  barf; }   constant FOO: i32 = 42;  ";
-        //          0123456789012345678901234567890123456789012345678901234567
-        //                    1         2         3         4         5
+    fn formatting_preserval() {
+        let src = b" fn foo();  fn foo  -> huk {  barf; }   constant FOO: i32 = 42;  fn bar(){ } ";
+        //          01234567890123456789012345678901234567890123456789012345678901234567890123456
+        //                    1         2         3         4         5         6         7
         assert_eq!(
             rust_delete(src, [5usize]),
-            b"fn foo  -> huk {  barf; }   constant FOO: i32 = 42;  "
+            b"fn foo  -> huk {  barf; }   constant FOO: i32 = 42;  fn bar(){ } "
         );
         assert_eq!(
             rust_delete(src, [15usize]),
-            b" fn foo(); constant FOO: i32 = 42;  "
+            b" fn foo(); constant FOO: i32 = 42;  fn bar(){ } "
         );
         assert_eq!(
             rust_delete(src, [42usize]),
-            b" fn foo();  fn foo  -> huk {  barf; } "
+            b" fn foo();  fn foo  -> huk {  barf; } fn bar(){ } "
         );
+        assert_eq!(
+            rust_delete(src, [70usize]),
+            b" fn foo();  fn foo  -> huk {  barf; }   constant FOO: i32 = 42; "
+        );
+
+        assert_eq!(
+            rust_delete(src, [5usize, 15]),
+            b"constant FOO: i32 = 42;  fn bar(){ } "
+        );
+        assert_eq!(
+            rust_delete(src, [15usize, 42usize]),
+            b" fn foo(); fn bar(){ } "
+        );
+    }
+
+    #[test]
+    fn whitespace_semi_preserval() {
+        let src = b" fn foo() {} fn fixme() {} fn main() {}";
+        assert_eq!(rust_delete(src, [15usize]), b" fn foo() {} fn main() {}");
+        let src = b" fn foo() {} fn fixme() {}fn main() {}";
+        assert_eq!(rust_delete(src, [15usize]), b" fn foo() {} fn main() {}");
+        let src = b" fn foo() {}fn fixme() {} fn main() {}";
+        assert_eq!(rust_delete(src, [15usize]), b" fn foo() {}fn main() {}");
+        //FIXME: this test case
+        let src = b" fn foo() {}\n\nfn fixme() {}\n\nfn main() {}";
+        assert_eq!(rust_delete(src, [15usize]), b" fn foo() {}\nfn main() {}");
     }
 }
