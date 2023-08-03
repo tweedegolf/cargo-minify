@@ -136,7 +136,7 @@ fn get_targets_with_hitlist(
     }
 }
 
-fn get_cargo_metadata(manifest_path: Option<&Path>) -> Result<cargo_metadata::Metadata> {
+pub fn get_cargo_metadata(manifest_path: Option<&Path>) -> Result<cargo_metadata::Metadata> {
     let mut cmd = cargo_metadata::MetadataCommand::new();
     cmd.no_deps();
     if let Some(manifest_path) = manifest_path {

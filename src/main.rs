@@ -1,9 +1,4 @@
-use std::{
-    collections::BTreeMap,
-    env, io,
-    io::Write,
-    path::{Path, PathBuf},
-};
+use std::{collections::BTreeMap, env, io, io::Write, path::PathBuf};
 
 use gumdrop::Options;
 
@@ -38,12 +33,12 @@ struct MinifyOptions {
 
     #[options(no_short, help = "Fix code even if the working directory is dirty")]
     allow_dirty: bool,
-}
 
-/// Function that checks whether the vcs in the given directory is in a "dirty"
-/// state
-fn vcs_is_dirty(path: impl AsRef<Path>) -> bool {
-    true
+    #[options(no_short, help = "Fix code even if there are staged files in the VCS")]
+    allow_staged: bool,
+
+    #[options(no_short, help = "Also operate if no version control system was found")]
+    allow_no_vcs: bool,
 }
 
 fn main() -> Result<()> {
@@ -62,6 +57,8 @@ fn main() -> Result<()> {
 
     Ok(())
 }
+
+mod vcs;
 
 fn execute(args: &[String]) -> Result<()> {
     let opts = MinifyOptions::parse_args_default(args).expect("internal error");
@@ -89,16 +86,44 @@ fn execute(args: &[String]) -> Result<()> {
             }
         }
 
+        let cargo_root = resolver::get_cargo_metadata(manifest_path.as_deref())?.workspace_root;
+
         if opts.apply {
-            if opts.allow_dirty || !vcs_is_dirty("") {
-                // TODO: Remove unwrap
-                cauterize::commit_changes(changes).unwrap();
-            } else {
-                eprintln!(
-                    "working directory is dirty, please commit your changes or ignore this \
-                     warning with --allow-dirty"
-                );
+            use vcs::Status;
+            match vcs::status(&cargo_root) {
+                Status::Error(e) => {
+                    eprintln!("git problem: {}", e)
+                }
+                Status::NoVCS if !opts.allow_no_vcs => {
+                    eprintln!(
+                        "no VCS found for this package and `cargo minify` can potentially \
+                         perform destructive changes; if you'd like to suppress this \
+                         error pass `--allow-no-vcs`"
+                    );
+                }
+                Status::Unclean { dirty, staged }
+                    if !(dirty.is_empty() || opts.allow_dirty)
+                        || !(staged.is_empty() || opts.allow_staged) =>
+                {
+                    eprintln!("working directory contains dirty/staged files:");
+                    for file in dirty {
+                        eprintln!("\t{} (dirty)", file)
+                    }
+                    for file in staged {
+                        eprintln!("\t{} (staged)", file)
+                    }
+                    eprintln!(
+                        "please fix this or ignore this \
+                             warning with --allow-dirty and/or --allow-staged"
+                    );
+                }
+                _ => {
+                    // TODO: Remove unwrap
+                    cauterize::commit_changes(changes).unwrap();
+                }
             }
+        } else {
+            todo!()
         }
     }
 
