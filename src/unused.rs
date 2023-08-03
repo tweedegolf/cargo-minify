@@ -77,6 +77,15 @@ impl TryFrom<Diagnostic> for UnusedDiagnostic {
 
                 message
             }
+            UnusedDiagnosticKind::AssociatedFunction => {
+                let (alias, message) = message.split_once(' ').ok_or(NotUnusedDiagnostic)?;
+
+                if alias != "function" {
+                    return Err(NotUnusedDiagnostic);
+                }
+
+                message
+            }
         };
 
         let (mut ident, message) = message.split_once(' ').ok_or(NotUnusedDiagnostic)?;
@@ -89,7 +98,8 @@ impl TryFrom<Diagnostic> for UnusedDiagnostic {
             | UnusedDiagnosticKind::Function
             | UnusedDiagnosticKind::Enum
             | UnusedDiagnosticKind::Union
-            | UnusedDiagnosticKind::TypeAlias => "is never used",
+            | UnusedDiagnosticKind::TypeAlias
+            | UnusedDiagnosticKind::AssociatedFunction => "is never used",
             UnusedDiagnosticKind::Struct => "is never constructed",
         };
 
@@ -111,6 +121,7 @@ pub enum UnusedDiagnosticKind {
     Enum,
     Union,
     TypeAlias,
+    AssociatedFunction,
 }
 
 impl FromStr for UnusedDiagnosticKind {
@@ -124,6 +135,7 @@ impl FromStr for UnusedDiagnosticKind {
             "enum" => Ok(UnusedDiagnosticKind::Enum),
             "union" => Ok(UnusedDiagnosticKind::Union),
             "type" => Ok(UnusedDiagnosticKind::TypeAlias),
+            "associated" => Ok(UnusedDiagnosticKind::AssociatedFunction),
             _ => Err(NotUnusedDiagnostic),
         }
     }
