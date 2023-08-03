@@ -59,15 +59,41 @@ impl TryFrom<Diagnostic> for UnusedDiagnostic {
     fn try_from(value: Diagnostic) -> Result<Self, Self::Error> {
         let message = value.message;
 
-        let (kind, message) = message.split_once(' ').ok_or(NotUnusedDiagnostic)?;
+        let (kind, mut message) = message.split_once(' ').ok_or(NotUnusedDiagnostic)?;
         let kind = UnusedDiagnosticKind::from_str(kind)?;
+
+        message = match kind {
+            UnusedDiagnosticKind::Constant
+            | UnusedDiagnosticKind::Function
+            | UnusedDiagnosticKind::Struct
+            | UnusedDiagnosticKind::Enum
+            | UnusedDiagnosticKind::Union => message,
+            UnusedDiagnosticKind::TypeAlias => {
+                let (alias, message) = message.split_once(' ').ok_or(NotUnusedDiagnostic)?;
+
+                if alias != "alias" {
+                    return Err(NotUnusedDiagnostic);
+                }
+
+                message
+            }
+        };
 
         let (mut ident, message) = message.split_once(' ').ok_or(NotUnusedDiagnostic)?;
         ident = ident.strip_prefix('`').ok_or(NotUnusedDiagnostic)?;
         ident = ident.strip_suffix('`').ok_or(NotUnusedDiagnostic)?;
         let ident = ident.to_owned();
 
-        if message != "is never used" {
+        let suffix = match kind {
+            UnusedDiagnosticKind::Constant
+            | UnusedDiagnosticKind::Function
+            | UnusedDiagnosticKind::Enum
+            | UnusedDiagnosticKind::Union
+            | UnusedDiagnosticKind::TypeAlias => "is never used",
+            UnusedDiagnosticKind::Struct => "is never constructed",
+        };
+
+        if message != suffix {
             return Err(NotUnusedDiagnostic);
         }
 
@@ -81,6 +107,10 @@ impl TryFrom<Diagnostic> for UnusedDiagnostic {
 pub enum UnusedDiagnosticKind {
     Constant,
     Function,
+    Struct,
+    Enum,
+    Union,
+    TypeAlias,
 }
 
 impl FromStr for UnusedDiagnosticKind {
@@ -90,6 +120,10 @@ impl FromStr for UnusedDiagnosticKind {
         match s {
             "constant" => Ok(UnusedDiagnosticKind::Constant),
             "function" => Ok(UnusedDiagnosticKind::Function),
+            "struct" => Ok(UnusedDiagnosticKind::Struct),
+            "enum" => Ok(UnusedDiagnosticKind::Enum),
+            "union" => Ok(UnusedDiagnosticKind::Union),
+            "type" => Ok(UnusedDiagnosticKind::TypeAlias),
             _ => Err(NotUnusedDiagnostic),
         }
     }
