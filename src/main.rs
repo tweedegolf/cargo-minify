@@ -123,7 +123,7 @@ fn execute(args: &[String]) -> Result<()> {
                 }
             }
         } else {
-            todo!()
+            println!("run with --apply to apply these changes")
         }
     }
 
