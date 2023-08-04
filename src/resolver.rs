@@ -84,7 +84,7 @@ fn workspace_targets(
     for package in &metadata.packages {
         if !exclude
             .iter()
-            .any(|name| glob_match::glob_match(&package.name, name))
+            .any(|name| glob_match::glob_match(name, &package.name))
         {
             for target in &package.targets {
                 targets.insert(target.clone());
@@ -115,11 +115,11 @@ fn workspace_targets(
 
 fn package_targets(
     manifest_path: Option<&Path>,
-    hitlist: &[String],
+    packages: &[String],
     targets: &mut HashSet<Target>,
 ) -> Result<()> {
     let metadata = get_cargo_metadata(manifest_path)?;
-    let mut workspace_hitlist: BTreeSet<&String> = BTreeSet::from_iter(hitlist);
+    let mut workspace_hitlist: BTreeSet<&String> = BTreeSet::from_iter(packages);
 
     for package in metadata.packages {
         if workspace_hitlist.remove(&package.name) {

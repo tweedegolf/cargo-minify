@@ -11,12 +11,13 @@ use cargo_metadata::{
     Message,
 };
 
-use crate::{error::Result, resolver, CrateResolutionOptions};
+use crate::{error::Result, resolver, CrateResolutionOptions, FileResolutionOptions};
 
-pub fn get_unused(
+pub fn get_unused<'a>(
     manifest_path: Option<&Path>,
     crate_resolution: &CrateResolutionOptions,
-) -> Result<impl Iterator<Item = UnusedDiagnostic>> {
+    file_resolution: &'a FileResolutionOptions,
+) -> Result<impl Iterator<Item = UnusedDiagnostic> + 'a> {
     let mut command = Command::new("cargo");
 
     command.args(["check", "--message-format", "json"]);
@@ -54,7 +55,8 @@ pub fn get_unused(
         })
         .filter(move |message| targets.contains(&message.target))
         .map(|message| message.message)
-        .filter_map(|diagnostic| UnusedDiagnostic::try_from(diagnostic).ok());
+        .filter_map(|diagnostic| UnusedDiagnostic::try_from(diagnostic).ok())
+        .filter(|diagnostic| file_resolution.is_included(&diagnostic.span.file_name));
 
     Ok(unused)
 }

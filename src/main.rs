@@ -29,6 +29,11 @@ struct MinifyOptions {
     #[options(no_short, help = "Exclude packages from the minify", meta = "SPEC")]
     exclude: Vec<String>,
 
+    #[options(help = "File to minify", meta = "SPEC")]
+    file: Vec<String>,
+    #[options(help = "Ignore files from the minify", meta = "SPEC")]
+    ignore: Vec<String>,
+
     #[options(no_short, help = "Apply changes instead of outputting a diff")]
     apply: bool,
 
@@ -51,37 +56,6 @@ struct MinifyOptions {
     allow_no_vcs: bool,
 }
 
-pub enum CrateResolutionOptions<'a> {
-    Root,
-    Workspace { exclude: &'a [String] },
-    Package { packages: &'a [String] },
-}
-
-impl<'a> CrateResolutionOptions<'a> {
-    fn from_options(opts: &'a MinifyOptions) -> Result<Self> {
-        match (
-            opts.workspace,
-            !opts.package.is_empty(),
-            !opts.exclude.is_empty(),
-        ) {
-            (true, false, true) | (true, false, false) => Ok(CrateResolutionOptions::Workspace {
-                exclude: &opts.exclude,
-            }),
-            (false, true, false) => Ok(CrateResolutionOptions::Package {
-                packages: &opts.package,
-            }),
-            (false, false, false) => Ok(CrateResolutionOptions::Root),
-            (true, true, false) | (false, true, true) | (true, true, true) => Err(Error::Args(
-                "either specify --workspace and optionally --exclude specific targets, or specify \
-                 specific targets with --package",
-            )),
-            (false, false, true) => Err(Error::Args(
-                "--exclude can only be used in conjunction with --workspace",
-            )),
-        }
-    }
-}
-
 fn main() -> Result<()> {
     // Drop the first actual argument if it is equal to our subcommand
     // (i.e. we are being called via 'cargo')
@@ -102,12 +76,17 @@ fn main() -> Result<()> {
 fn execute(args: &[String]) -> Result<()> {
     let opts = MinifyOptions::parse_args_default(args).expect("internal error");
     let manifest_path = opts.manifest_path.as_ref().map(PathBuf::from);
+    let crate_resolution = CrateResolutionOptions::from_options(&opts)?;
+    let file_resolution = FileResolutionOptions::from_options(&opts)?;
 
     if opts.help {
         println!("{}", MinifyOptions::usage());
     } else {
-        let crate_resolution = CrateResolutionOptions::from_options(&opts)?;
-        let unused = unused::get_unused(manifest_path.as_deref(), &crate_resolution)?;
+        let unused = unused::get_unused(
+            manifest_path.as_deref(),
+            &crate_resolution,
+            &file_resolution,
+        )?;
         let changes: Vec<_> = cauterize::process_diagnostics(unused).collect();
 
         if !opts.quiet {
@@ -162,4 +141,63 @@ fn execute(args: &[String]) -> Result<()> {
     }
 
     Ok(())
+}
+
+pub enum CrateResolutionOptions<'a> {
+    Root,
+    Workspace { exclude: &'a [String] },
+    Package { packages: &'a [String] },
+}
+
+impl<'a> CrateResolutionOptions<'a> {
+    fn from_options(opts: &'a MinifyOptions) -> Result<Self> {
+        match (
+            opts.workspace,
+            !opts.package.is_empty(),
+            !opts.exclude.is_empty(),
+        ) {
+            (true, false, true) | (true, false, false) => Ok(CrateResolutionOptions::Workspace {
+                exclude: &opts.exclude,
+            }),
+            (false, true, false) => Ok(CrateResolutionOptions::Package {
+                packages: &opts.package,
+            }),
+            (false, false, false) => Ok(CrateResolutionOptions::Root),
+            (true, true, false) | (false, true, true) | (true, true, true) => Err(Error::Args(
+                "either specify --workspace and optionally --exclude specific targets, or specify \
+                 specific targets with --package",
+            )),
+            (false, false, true) => Err(Error::Args(
+                "--exclude can only be used in conjunction with --workspace",
+            )),
+        }
+    }
+}
+
+pub enum FileResolutionOptions<'a> {
+    Only(&'a [String]),
+    AllBut(&'a [String]),
+}
+
+impl<'a> FileResolutionOptions<'a> {
+    fn from_options(opts: &'a MinifyOptions) -> Result<Self> {
+        match (!opts.file.is_empty(), !opts.ignore.is_empty()) {
+            (false, false) | (false, true) => Ok(FileResolutionOptions::AllBut(&opts.ignore)),
+            (true, false) => Ok(FileResolutionOptions::Only(&opts.file)),
+            (true, true) => Err(Error::Args(
+                "either specify --ignore to minify all files except",
+            )),
+        }
+    }
+
+    pub fn is_included(&self, file_name: &str) -> bool {
+        match self {
+            FileResolutionOptions::Only(files) => files
+                .iter()
+                .any(|file| glob_match::glob_match(file, file_name)),
+            FileResolutionOptions::AllBut(ignored) => ignored
+                .iter()
+                .all(|ignore| !glob_match::glob_match(ignore, file_name)),
+        }
+    }
 }
