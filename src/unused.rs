@@ -17,6 +17,7 @@ pub fn get_unused<'a>(
     manifest_path: Option<&Path>,
     crate_resolution: &CrateResolutionOptions,
     file_resolution: &'a FileResolutionOptions,
+    kinds: &'a [UnusedDiagnosticKind],
 ) -> Result<impl Iterator<Item = UnusedDiagnostic> + 'a> {
     let mut command = Command::new("cargo");
 
@@ -56,6 +57,7 @@ pub fn get_unused<'a>(
         .filter(move |message| targets.contains(&message.target))
         .map(|message| message.message)
         .filter_map(|diagnostic| UnusedDiagnostic::try_from(diagnostic).ok())
+        .filter(|diagnostic| kinds.is_empty() || kinds.contains(&diagnostic.kind))
         .filter(|diagnostic| file_resolution.is_included(&diagnostic.span.file_name));
 
     Ok(unused)
@@ -134,7 +136,7 @@ impl TryFrom<Diagnostic> for UnusedDiagnostic {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum UnusedDiagnosticKind {
     Constant,
     Function,
@@ -149,14 +151,20 @@ impl FromStr for UnusedDiagnosticKind {
     type Err = NotUnusedDiagnostic;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
+        match s
+            .chars()
+            .filter(|c| c.is_alphanumeric())
+            .map(|c| c.to_ascii_lowercase())
+            .collect::<String>()
+            .as_str()
+        {
             "constant" => Ok(UnusedDiagnosticKind::Constant),
             "function" => Ok(UnusedDiagnosticKind::Function),
             "struct" => Ok(UnusedDiagnosticKind::Struct),
             "enum" => Ok(UnusedDiagnosticKind::Enum),
             "union" => Ok(UnusedDiagnosticKind::Union),
-            "type" => Ok(UnusedDiagnosticKind::TypeAlias),
-            "associated" => Ok(UnusedDiagnosticKind::AssociatedFunction),
+            "type" | "typealias" => Ok(UnusedDiagnosticKind::TypeAlias),
+            "associated" | "associatedfunction" => Ok(UnusedDiagnosticKind::AssociatedFunction),
             _ => Err(NotUnusedDiagnostic),
         }
     }

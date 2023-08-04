@@ -5,6 +5,7 @@ use gumdrop::Options;
 use crate::{
     diff_format::ColorMode,
     error::{Error, Result},
+    unused::UnusedDiagnosticKind,
 };
 
 mod cauterize;
@@ -33,6 +34,12 @@ struct MinifyOptions {
     file: Vec<String>,
     #[options(help = "Ignore files from the minify", meta = "SPEC")]
     ignore: Vec<String>,
+
+    #[options(
+        help = "specify which kinds of diagnostics to apply",
+        meta = "< CONST | FUNCTION | STRUCT | ENUM | UNION | TYPE_ALIAS | ASSOCIATED_FUNCTION >"
+    )]
+    kinds: Vec<UnusedDiagnosticKind>,
 
     #[options(no_short, help = "Apply changes instead of outputting a diff")]
     apply: bool,
@@ -86,6 +93,7 @@ fn execute(args: &[String]) -> Result<()> {
             manifest_path.as_deref(),
             &crate_resolution,
             &file_resolution,
+            &opts.kinds,
         )?;
         let changes: Vec<_> = cauterize::process_diagnostics(unused).collect();
 
