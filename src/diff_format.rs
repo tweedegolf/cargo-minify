@@ -14,14 +14,14 @@ pub fn println(original: &[u8], proposed: &[u8], mode: ColorMode) {
 
     let mut included = Vec::new();
 
-    let mut last_change: isize = -BEFORE_CONTEXT - 1;
-    let mut last_insert: isize = -BEFORE_CONTEXT - 1;
+    let mut last_change: isize = -AFTER_CONTEXT - 1;
+    let mut last_insert: isize = -AFTER_CONTEXT - 1;
     for index in 0..diff.len() as isize {
         if has_changed(&diff[index as usize]) {
             if last_insert < index - BEFORE_CONTEXT - 1 {
                 included.push(DiffLine::Ellipsis);
             }
-            for index in (index - BEFORE_CONTEXT).max(last_insert + 1)..index {
+            for index in (index - BEFORE_CONTEXT).max(last_insert + 1).max(0)..index {
                 included.push(DiffLine::Context(get_line(&diff[index as usize])));
             }
             included.push(DiffLine::Diff(diff[index as usize].clone()));
