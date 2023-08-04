@@ -12,32 +12,30 @@ use std::{
 
 use cargo_metadata::Target;
 
-use crate::error::Result;
+use crate::{error::Result, CrateResolutionOptions};
 
 pub fn get_targets(
     manifest_path: Option<&Path>,
-    package: &[String],
-    workspace: bool,
+    crate_resolution: &CrateResolutionOptions,
 ) -> Result<HashSet<Target>> {
     let mut targets = HashSet::new();
 
-    if workspace {
-        get_targets_recursive(manifest_path, &mut targets, &mut BTreeSet::new())?
-    } else if !package.is_empty() {
-        get_targets_with_hitlist(manifest_path, package, &mut targets)?
-    } else {
-        get_targets_root_only(manifest_path, &mut targets)?
+    match crate_resolution {
+        CrateResolutionOptions::Root => root_targets(manifest_path, &mut targets)?,
+        CrateResolutionOptions::Workspace { exclude } => {
+            workspace_targets(manifest_path, *exclude, &mut targets, &mut BTreeSet::new())?
+        }
+        CrateResolutionOptions::Package { packages } => {
+            package_targets(manifest_path, *packages, &mut targets)?
+        }
     }
 
-    // TODO: Return error if no targets
+    eprintln!("crate resolution found no targets");
 
     Ok(targets)
 }
 
-fn get_targets_root_only(
-    manifest_path: Option<&Path>,
-    targets: &mut HashSet<Target>,
-) -> Result<()> {
+fn root_targets(manifest_path: Option<&Path>, targets: &mut HashSet<Target>) -> Result<()> {
     let metadata = get_cargo_metadata(manifest_path)?;
     let workspace_root_path = PathBuf::from(&metadata.workspace_root).canonicalize()?;
     let (in_workspace_root, current_dir_manifest) = if let Some(target_manifest) = manifest_path {
@@ -76,31 +74,38 @@ fn get_targets_root_only(
     Ok(())
 }
 
-fn get_targets_recursive(
+fn workspace_targets(
     manifest_path: Option<&Path>,
+    exclude: &[String],
     targets: &mut HashSet<Target>,
     visited: &mut BTreeSet<String>,
 ) -> Result<()> {
     let metadata = get_cargo_metadata(manifest_path)?;
     for package in &metadata.packages {
-        for target in &package.targets {
-            targets.insert(target.clone());
-        }
-
-        for dependency in &package.dependencies {
-            if dependency.path.is_none() || visited.contains(&dependency.name) {
-                continue;
+        if !exclude
+            .iter()
+            .any(|name| glob_match::glob_match(&package.name, name))
+        {
+            for target in &package.targets {
+                targets.insert(target.clone());
             }
 
-            let manifest_path = PathBuf::from(dependency.path.as_ref().unwrap()).join("Cargo.toml");
-            if manifest_path.exists()
-                && !metadata
-                    .packages
-                    .iter()
-                    .any(|p| p.manifest_path.eq(&manifest_path))
-            {
-                visited.insert(dependency.name.to_owned());
-                get_targets_recursive(Some(&manifest_path), targets, visited)?;
+            for dependency in &package.dependencies {
+                if dependency.path.is_none() || visited.contains(&dependency.name) {
+                    continue;
+                }
+
+                let manifest_path =
+                    PathBuf::from(dependency.path.as_ref().unwrap()).join("Cargo.toml");
+                if manifest_path.exists()
+                    && !metadata
+                        .packages
+                        .iter()
+                        .any(|p| p.manifest_path.eq(&manifest_path))
+                {
+                    visited.insert(dependency.name.to_owned());
+                    workspace_targets(Some(&manifest_path), exclude, targets, visited)?;
+                }
             }
         }
     }
@@ -108,7 +113,7 @@ fn get_targets_recursive(
     Ok(())
 }
 
-fn get_targets_with_hitlist(
+fn package_targets(
     manifest_path: Option<&Path>,
     hitlist: &[String],
     targets: &mut HashSet<Target>,

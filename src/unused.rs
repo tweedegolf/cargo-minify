@@ -1,5 +1,4 @@
 use std::{
-    error::Error,
     fmt::{Display, Formatter},
     io::BufReader,
     path::Path,
@@ -12,30 +11,37 @@ use cargo_metadata::{
     Message,
 };
 
-use crate::{error::Result, resolver};
+use crate::{error::Result, resolver, CrateResolutionOptions};
 
 pub fn get_unused(
     manifest_path: Option<&Path>,
-    package: &[String],
-    workspace: bool,
+    crate_resolution: &CrateResolutionOptions,
 ) -> Result<impl Iterator<Item = UnusedDiagnostic>> {
     let mut command = Command::new("cargo");
 
     command.args(["check", "--message-format", "json"]);
 
-    for package in package {
-        command.args(["-p", package]);
-    }
+    match crate_resolution {
+        CrateResolutionOptions::Root => {}
+        CrateResolutionOptions::Workspace { exclude } => {
+            command.arg("--workspace");
 
-    if workspace {
-        command.arg("--workspace");
+            for package in *exclude {
+                command.args(["--exclude", package]);
+            }
+        }
+        CrateResolutionOptions::Package { packages } => {
+            for package in *packages {
+                command.args(["-p", package]);
+            }
+        }
     }
 
     let mut child = command.stdout(Stdio::piped()).spawn()?;
     let stdout = child.stdout.take().unwrap();
     let reader = BufReader::new(stdout);
 
-    let targets = resolver::get_targets(manifest_path, package, workspace)?;
+    let targets = resolver::get_targets(manifest_path, crate_resolution)?;
 
     let unused = Message::parse_stream(reader)
         .flatten()
@@ -163,4 +169,4 @@ impl Display for NotUnusedDiagnostic {
     }
 }
 
-impl Error for NotUnusedDiagnostic {}
+impl std::error::Error for NotUnusedDiagnostic {}

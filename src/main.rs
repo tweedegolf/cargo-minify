@@ -2,7 +2,10 @@ use std::{env, io, io::Write, path::PathBuf};
 
 use gumdrop::Options;
 
-use crate::{diff_format::ColorMode, error::Result};
+use crate::{
+    diff_format::ColorMode,
+    error::{Error, Result},
+};
 
 mod cauterize;
 mod diff_format;
@@ -10,6 +13,7 @@ mod error;
 mod resolver;
 mod unused;
 mod useless;
+mod vcs;
 
 const SUBCOMMAND_NAME: &str = "minify";
 
@@ -18,10 +22,12 @@ struct MinifyOptions {
     #[options(help = "No output printed to stdout")]
     quiet: bool,
 
-    #[options(help = "Package to minify")]
+    #[options(help = "Package to minify", meta = "SPEC")]
     package: Vec<String>,
     #[options(no_short, help = "Minify all packages in the workspace")]
     workspace: bool,
+    #[options(no_short, help = "Exclude packages from the minify", meta = "SPEC")]
+    exclude: Vec<String>,
 
     #[options(no_short, help = "Apply changes instead of outputting a diff")]
     apply: bool,
@@ -29,10 +35,10 @@ struct MinifyOptions {
     #[options(help = "Print help message")]
     help: bool,
 
-    #[options(no_short, help = "Coloring: auto, always, never")]
+    #[options(no_short, help = "Coloring: auto, always, never", meta = "WHEN")]
     color: ColorMode,
 
-    #[options(no_short, help = "Path to Cargo.toml")]
+    #[options(no_short, help = "Path to Cargo.toml", meta = "PATH")]
     manifest_path: Option<String>,
 
     #[options(no_short, help = "Fix code even if the working directory is dirty")]
@@ -43,6 +49,37 @@ struct MinifyOptions {
 
     #[options(no_short, help = "Also operate if no version control system was found")]
     allow_no_vcs: bool,
+}
+
+pub enum CrateResolutionOptions<'a> {
+    Root,
+    Workspace { exclude: &'a [String] },
+    Package { packages: &'a [String] },
+}
+
+impl<'a> CrateResolutionOptions<'a> {
+    fn from_options(opts: &'a MinifyOptions) -> Result<Self> {
+        match (
+            opts.workspace,
+            !opts.package.is_empty(),
+            !opts.exclude.is_empty(),
+        ) {
+            (true, false, true) | (true, false, false) => Ok(CrateResolutionOptions::Workspace {
+                exclude: &opts.exclude,
+            }),
+            (false, true, false) => Ok(CrateResolutionOptions::Package {
+                packages: &opts.package,
+            }),
+            (false, false, false) => Ok(CrateResolutionOptions::Root),
+            (true, true, false) | (false, true, true) | (true, true, true) => Err(Error::Args(
+                "either specify --workspace and optionally --exclude specific targets, or specify \
+                 specific targets with --package",
+            )),
+            (false, false, true) => Err(Error::Args(
+                "--exclude can only be used in conjunction with --workspace",
+            )),
+        }
+    }
 }
 
 fn main() -> Result<()> {
@@ -62,16 +99,15 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-mod vcs;
-
 fn execute(args: &[String]) -> Result<()> {
     let opts = MinifyOptions::parse_args_default(args).expect("internal error");
-    let manifest_path = opts.manifest_path.map(PathBuf::from);
+    let manifest_path = opts.manifest_path.as_ref().map(PathBuf::from);
 
     if opts.help {
         println!("{}", MinifyOptions::usage());
     } else {
-        let unused = unused::get_unused(manifest_path.as_deref(), &opts.package, opts.workspace)?;
+        let crate_resolution = CrateResolutionOptions::from_options(&opts)?;
+        let unused = unused::get_unused(manifest_path.as_deref(), &crate_resolution)?;
         let changes: Vec<_> = cauterize::process_diagnostics(unused).collect();
 
         if !opts.quiet {
