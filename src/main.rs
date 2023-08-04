@@ -1,7 +1,6 @@
-use std::{ env, io, io::Write, path::PathBuf};
+use std::{env, io, io::Write, path::PathBuf};
 
 use gumdrop::Options;
-use nu_ansi_term::Color;
 
 use crate::{diff_format::ColorMode, error::Result};
 
@@ -67,33 +66,21 @@ mod vcs;
 
 fn execute(args: &[String]) -> Result<()> {
     let opts = MinifyOptions::parse_args_default(args).expect("internal error");
+    let manifest_path = opts.manifest_path.map(PathBuf::from);
 
     if opts.help {
-        eprintln!("{}", MinifyOptions::usage());
+        println!("{}", MinifyOptions::usage());
     } else {
-        let manifest_path = opts.manifest_path.map(PathBuf::from);
-        let package = &opts.package[..];
-        let targets = resolver::get_targets(manifest_path.as_deref(), package, opts.workspace)?;
-        // TODO: Remove collect
-        let unused: Vec<_> = unused::get_unused(&targets)?.collect();
-        let spans = unused.iter().map(|diagnostic| diagnostic.span());
-
-        let changes: Vec<_> = cauterize::process_diagnostics(spans).collect();
+        let unused = unused::get_unused(manifest_path.as_deref(), &opts.package, opts.workspace)?;
+        let changes: Vec<_> = cauterize::process_diagnostics(unused).collect();
 
         if !opts.quiet {
-            for change in &changes {
-                let text = format!("#\n#\tshowing diff for {:?}:\n#", change.file_name());
-                if opts.color.enabled() {
-                    println!("{}", Color::DarkGray.paint(text));
-                } else {
-                    println!("{text}")
+            if changes.is_empty() {
+                println!("no unused code that can be minified")
+            } else {
+                for change in &changes {
+                    diff_format::println(change, opts.color);
                 }
-
-                diff_format::println(
-                    change.original_content(),
-                    change.proposed_content(),
-                    opts.color,
-                );
             }
         }
 
@@ -107,9 +94,9 @@ fn execute(args: &[String]) -> Result<()> {
                 }
                 Status::NoVCS if !opts.allow_no_vcs => {
                     eprintln!(
-                        "no VCS found for this package and `cargo minify` can potentially \
-                         perform destructive changes; if you'd like to suppress this \
-                         error pass `--allow-no-vcs`"
+                        "no VCS found for this package and `cargo minify` can potentially perform \
+                         destructive changes; if you'd like to suppress this error pass \
+                         `--allow-no-vcs`"
                     );
                 }
                 Status::Unclean { dirty, staged }
@@ -124,8 +111,8 @@ fn execute(args: &[String]) -> Result<()> {
                         eprintln!("\t{} (staged)", file)
                     }
                     eprintln!(
-                        "please fix this or ignore this \
-                             warning with --allow-dirty and/or --allow-staged"
+                        "please fix this or ignore this warning with --allow-dirty and/or \
+                         --allow-staged"
                     );
                 }
                 _ => {
@@ -133,7 +120,7 @@ fn execute(args: &[String]) -> Result<()> {
                     cauterize::commit_changes(changes).unwrap();
                 }
             }
-        } else {
+        } else if !changes.is_empty() {
             println!("run with --apply to apply these changes")
         }
     }

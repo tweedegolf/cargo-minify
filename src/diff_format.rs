@@ -3,12 +3,21 @@ use std::str::FromStr;
 use nu_ansi_term::Color;
 use thiserror::Error;
 
+use crate::cauterize::Change;
+
 const BEFORE_CONTEXT: isize = 2;
 const AFTER_CONTEXT: isize = 2;
 
-pub fn println(original: &[u8], proposed: &[u8], mode: ColorMode) {
-    let left = String::from_utf8_lossy(original);
-    let right = String::from_utf8_lossy(proposed);
+pub fn println(change: &Change, color_mode: ColorMode) {
+    let text = format!("#\n#\tshowing diff for {:?}:\n#", change.file_name());
+    if color_mode.enabled() {
+        println!("{}", Color::DarkGray.paint(text));
+    } else {
+        println!("{text}")
+    }
+
+    let left = String::from_utf8_lossy(change.original_content());
+    let right = String::from_utf8_lossy(change.proposed_content());
 
     let diff = diff::lines(&left, &right);
 
@@ -47,7 +56,7 @@ pub fn println(original: &[u8], proposed: &[u8], mode: ColorMode) {
 
         let format = format!("{symbol}\t{line}");
 
-        if mode.enabled() {
+        if color_mode.enabled() {
             println!("{}", color.paint(format));
         } else {
             println!("{format}");

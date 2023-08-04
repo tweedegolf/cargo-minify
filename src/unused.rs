@@ -1,28 +1,41 @@
 use std::{
-    collections::HashSet,
     error::Error,
     fmt::{Display, Formatter},
     io::BufReader,
+    path::Path,
     process::{Command, Stdio},
     str::FromStr,
 };
 
 use cargo_metadata::{
     diagnostic::{Diagnostic, DiagnosticSpan},
-    Message, Target,
+    Message,
 };
 
-use crate::error::Result;
+use crate::{error::Result, resolver};
 
 pub fn get_unused(
-    targets: &HashSet<Target>,
-) -> Result<impl Iterator<Item = UnusedDiagnostic> + '_> {
+    manifest_path: Option<&Path>,
+    package: &[String],
+    workspace: bool,
+) -> Result<impl Iterator<Item = UnusedDiagnostic>> {
     let mut command = Command::new("cargo");
+
     command.args(["check", "--message-format", "json"]);
+
+    for package in package {
+        command.args(["-p", package]);
+    }
+
+    if workspace {
+        command.arg("--workspace");
+    }
 
     let mut child = command.stdout(Stdio::piped()).spawn()?;
     let stdout = child.stdout.take().unwrap();
     let reader = BufReader::new(stdout);
+
+    let targets = resolver::get_targets(manifest_path, package, workspace)?;
 
     let unused = Message::parse_stream(reader)
         .flatten()
@@ -33,7 +46,7 @@ pub fn get_unused(
                 None
             }
         })
-        .filter(|message| targets.contains(&message.target))
+        .filter(move |message| targets.contains(&message.target))
         .map(|message| message.message)
         .filter_map(|diagnostic| UnusedDiagnostic::try_from(diagnostic).ok());
 

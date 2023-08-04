@@ -3,29 +3,29 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use cargo_metadata::diagnostic::DiagnosticSpan;
+use crate::unused::UnusedDiagnostic;
 
 const SPACE: u8 = b' ';
 const NEWLINE: u8 = b'\n';
 
 pub struct Change {
-	file_name: PathBuf,
-	original_content: Vec<u8>,
-	proposed_content: Vec<u8>,
+    file_name: PathBuf,
+    original_content: Vec<u8>,
+    proposed_content: Vec<u8>,
 }
 
 impl Change {
-	pub fn file_name(&self) -> &Path {
-		&self.file_name
-	}
+    pub fn file_name(&self) -> &Path {
+        &self.file_name
+    }
 
-	pub fn original_content(&self) -> &[u8] {
-		&self.original_content
-	}
+    pub fn original_content(&self) -> &[u8] {
+        &self.original_content
+    }
 
-	pub fn proposed_content(&self) -> &[u8] {
-		&self.proposed_content
-	}
+    pub fn proposed_content(&self) -> &[u8] {
+        &self.proposed_content
+    }
 }
 
 /// Turns a list of "locations of identifiers" into a list of "chunk
@@ -106,7 +106,7 @@ pub fn rust_delete(src: &[u8], locations: impl IntoIterator<Item = usize>) -> Ve
 
 /// Processes a list of file+list-of-edits into an iterator of
 /// filenames+proposed new contents
-fn process_files<'a, Iter: IntoIterator<Item = usize>>(
+fn process_files<Iter: IntoIterator<Item = usize>>(
     diagnostics: impl IntoIterator<Item = (PathBuf, Iter)>,
 ) -> impl Iterator<Item = Change> {
     diagnostics
@@ -128,20 +128,25 @@ fn process_files<'a, Iter: IntoIterator<Item = usize>>(
 /// Process a list of UnusedDiagnostics into an iterator of filenames+proposed
 /// contents BUGS: this does not check that the diagnostic is a "unused
 /// diagnostic"
-pub fn process_diagnostics<'a>(
-    diagnostics: impl IntoIterator<Item = &'a DiagnosticSpan>,
+pub fn process_diagnostics(
+    diagnostics: impl IntoIterator<Item = UnusedDiagnostic>,
 ) -> impl Iterator<Item = Change> {
     process_files(
         diagnostics
             .into_iter()
-            .map(|span| (PathBuf::from(&span.file_name), span.byte_start as usize))
+            .map(|diagnostic| {
+                let span = diagnostic.span();
+                let path = PathBuf::from(&span.file_name);
+                let start = span.byte_start as usize;
+                (path, start)
+            })
             .collect::<multimap::MultiMap<_, _>>()
             .into_iter(),
     )
 }
 
 /// DANGER
-pub fn commit_changes<'a>(
+pub fn commit_changes(
     changes: impl IntoIterator<Item = Change>,
 ) -> Result<(), Vec<std::io::Error>> {
     let errors = changes
@@ -193,7 +198,8 @@ mod test {
     fn formatting_preserval() {
         let src = b" fn foo();  fn foo  -> huk {  barf; }   constant FOO: i32 = 42;  fn bar(){ } ";
         //          01234567890123456789012345678901234567890123456789012345678901234567890123456
-        //                    1         2         3         4         5         6         7
+        //                    1         2         3         4         5         6
+        // 7
         assert_eq!(
             rust_delete(src, [5usize]),
             b"fn foo  -> huk {  barf; }   constant FOO: i32 = 42;  fn bar(){ } "
