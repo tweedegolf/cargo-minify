@@ -1,3 +1,6 @@
+[workspace]
+members = ["examples/*"]
+
 [package]
 name = "cargo-minify"
 version = "0.5.0"

@@ -8,8 +8,8 @@ mod cauterize;
 mod diff_format;
 mod error;
 mod resolver;
-mod test;
 mod unused;
+mod useless;
 
 const SUBCOMMAND_NAME: &str = "minify";
 
