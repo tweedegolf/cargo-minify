@@ -28,8 +28,32 @@ impl Change {
     }
 }
 
+/// Finds the position of the first whitespace that is considered belonging
+/// to the next definition/declaration (this is a kind of "heuristic")
+/// Current heuristic:
+/// - if there is a newline, all space before it is related
+/// - if there is no newline, all whitespace is not related
+fn find_prefix_whitespace<'a>(src: &'a [u8]) -> usize {
+    (0..src.len())
+        .take_while(|&k| src[k].is_ascii_whitespace())
+        .last()
+        .map(|j| j + 1)
+        .unwrap_or(0)
+}
+
+/// Finds the position of the first whitespace that is not considered belonging
+/// to the previous definition/declaration (this is kind of "heuristic")
+/// Current heuristic:
+/// - if there is a newline, eat all space before it, and the newline
+/// - if there is no newline, eat all trailing whitespace until the next token
+fn find_suffix_whitespace<'a>(src: &'a [u8]) -> usize {
+    src.iter()
+        .position(|c| *c != SPACE)
+        .map(|pos| if src[pos] == NEWLINE { pos + 1 } else { pos })
+        .unwrap_or(src.len())
+}
+
 /// Turns a list of "locations of identifiers" into a list of "chunk
-/// BUGS: this is not safe for use on macros
 fn rust_identifiers_to_definitions<'a>(
     src: &'a [u8],
     locations: impl IntoIterator<Item = usize> + 'a,
@@ -38,13 +62,7 @@ fn rust_identifiers_to_definitions<'a>(
         let prev = src[..pos]
             .iter()
             .rposition(|x| b";}{".contains(x))
-            .map(|i| {
-                (i + 1..pos)
-                    .take_while(|&k| src[k].is_ascii_whitespace())
-                    .last()
-                    .map(|j| j + 1)
-                    .unwrap_or(i + 1)
-            })
+            .map(|i| find_prefix_whitespace(&src[i + 1..pos]) + (i + 1))
             .unwrap_or(0);
         let next = src[pos..]
             .iter()
@@ -74,12 +92,7 @@ fn rust_identifiers_to_definitions<'a>(
                     }
                 }
 
-                src[i..]
-                    .iter()
-                    .position(|c| *c != SPACE)
-                    .map(|k| i + k)
-                    .map(|pos| if src[pos] == NEWLINE { pos + 1 } else { pos })
-                    .unwrap_or(src.len())
+                find_suffix_whitespace(&src[i..]) + i
             })
             .unwrap_or(src.len());
 
@@ -265,10 +278,12 @@ mod test {
             rust_delete(src, [15usize]),
             b" fn foo() {}\n\n\nfn main() {}"
         );
-        let src = b"fn foo() {}\n         fn fixme() {}\n   fn main() {}";
+
+        let src = b"fn foo() {}\n          fn fixme() {}\n   fn main() {}";
         assert_eq!(
-            rust_delete(src, [17usize]),
-            b"fn foo() {}\n   fn main() {}"
+            rust_delete(src, [21usize]),
+            b"fn foo() {}\n            fn main() {}"
+
         );
     }
 }
