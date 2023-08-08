@@ -5,7 +5,7 @@ use std::{
 
 use syn::{spanned::Spanned, File, Item};
 
-use crate::unused::UnusedDiagnostic;
+use crate::unused::{UnusedDiagnostic, UnusedDiagnosticKind};
 
 const SPACE: u8 = b' ';
 const NEWLINE: u8 = b'\n';
@@ -33,14 +33,15 @@ impl Change {
 /// Finds the position of the first whitespace that is considered belonging
 /// to the next definition/declaration (this is a kind of "heuristic")
 /// Current heuristic:
-/// - if there is a newline, all space before it is related
-/// - if there is no newline, all whitespace is not related
+/// - leave prefixing whitespace as is (if it doesn't contain a newline)
+/// - remove the rest of the line (if there is a newline)
 fn find_prefix_whitespace(src: &[u8]) -> usize {
     (0..src.len())
+        .rev()
         .take_while(|&k| src[k].is_ascii_whitespace())
-        .last()
+        .find(|&k| src[k] == NEWLINE)
         .map(|j| j + 1)
-        .unwrap_or(0)
+        .unwrap_or(src.len())
 }
 
 /// Finds the position of the first whitespace that is not considered belonging
@@ -55,50 +56,53 @@ fn find_suffix_whitespace(src: &[u8]) -> usize {
         .unwrap_or(src.len())
 }
 
-/// Turns a list of "locations of identifiers" into a list of "chunk
-fn rust_identifiers_to_definitions<'a>(
+/// Turns a list of "locations of identifiers" into a list of "chunks"
+fn diagnostics_to_ranges<'a>(
     src: &'a [u8],
-    locations: impl IntoIterator<Item = usize> + 'a,
-) -> impl Iterator<Item = Range<usize>> + 'a {
-    locations.into_iter().map(|pos| {
-        let prev = src[..pos]
-            .iter()
-            .rposition(|x| b";}{".contains(x))
-            .map(|i| find_prefix_whitespace(&src[i + 1..pos]) + (i + 1))
-            .unwrap_or(0);
-        let next = src[pos..]
-            .iter()
-            .position(|x| b";{".contains(x))
-            .map(|i| pos + i)
-            .map(|mut i| {
-                // find matching '}' for a '{'
-                let mut level = 0;
-                let mut in_quote = None;
-                loop {
-                    match src[i] {
-                        x if Some(x) == in_quote => in_quote = None,
-                        _ if in_quote.is_some() => {}
-                        b'{' => level += 1,
-                        b'}' => level -= 1,
-                        b'"' => in_quote = Some(b'"'),
-                        b'\'' => in_quote = Some(b'\''),
-                        _ => {}
-                    }
-                    i += 1;
+    idents: impl IntoIterator<Item = (UnusedDiagnosticKind, String)> + 'a,
+) -> Result<impl Iterator<Item = Range<usize>> + 'a, syn::Error> {
+    let s = String::from_utf8_lossy(src);
+    let parsed = syn::parse_str::<syn::File>(&s)?;
 
-                    if i == src.len() {
-                        return i;
-                    }
-                    if level == 0 {
-                        break;
-                    }
+    let cumulative_lengths = line_offsets(src);
+
+    let ranges = idents.into_iter().flat_map(move |diag| {
+        parsed
+            .items
+            .iter()
+            .filter_map(|item| {
+                let item_ident = match item {
+                    syn::Item::Const(obj) => &obj.ident,
+                    syn::Item::Enum(obj) => &obj.ident,
+                    syn::Item::Fn(obj) => &obj.sig.ident,
+                    syn::Item::Macro(obj) if obj.ident.is_some() => obj.ident.as_ref().unwrap(),
+                    syn::Item::Static(obj) => &obj.ident,
+                    syn::Item::Struct(obj) => &obj.ident,
+                    syn::Item::Type(obj) => &obj.ident,
+                    syn::Item::Union(obj) => &obj.ident,
+                    syn::Item::ForeignMod(obj) => todo!(),
+                    _ => return None,
+                };
+
+                if *item_ident == diag.1 {
+                    Some(to_range(&cumulative_lengths, &item.span()))
+                } else {
+                    None
                 }
-
-                find_suffix_whitespace(&src[i..]) + i
             })
-            .unwrap_or(src.len());
+            .collect::<Vec<_>>()
+    });
 
-        prev..next
+    Ok(ranges)
+}
+
+fn expand_ranges_to_include_whitespace<'a>(
+    src: &'a [u8],
+    iter: impl Iterator<Item = Range<usize>> + 'a,
+) -> impl Iterator<Item = Range<usize>> + 'a {
+    iter.map(|range| {
+        find_prefix_whitespace(&src[..range.start])
+            ..find_suffix_whitespace(&src[range.end..]) + range.end
     })
 }
 
@@ -121,13 +125,14 @@ pub fn delete_chunks(src: &[u8], chunks_to_delete: &[Range<usize>]) -> Vec<u8> {
 /// Deletes a list-of-positions-of-identifiers from a bytearray that is valid
 /// rust code BUGS: if the position is in the body of a function, it will try to
 /// delete identifiers there ...  probably?
-pub fn rust_delete(src: &[u8], diagnostics: impl IntoIterator<Item = UnusedDiagnostic>) -> Vec<u8> {
-    let locations = diagnostics
-        .into_iter()
-        .map(|diagnostic| diagnostic.span.byte_start as usize);
-    let chunks_to_delete = rust_identifiers_to_definitions(src, locations).collect::<Vec<_>>();
+pub fn rust_delete(
+    src: &[u8],
+    diagnostics: impl IntoIterator<Item = (UnusedDiagnosticKind, String)>,
+) -> Result<Vec<u8>, syn::Error> {
+    let chunks_to_delete =
+        expand_ranges_to_include_whitespace(src, diagnostics_to_ranges(src, diagnostics)?);
 
-    delete_chunks(src, &chunks_to_delete)
+    Ok(delete_chunks(src, &chunks_to_delete.collect::<Vec<_>>()))
 }
 
 /// Processes a list of file+list-of-edits into an iterator of
@@ -139,7 +144,11 @@ fn process_files<Iter: IntoIterator<Item = UnusedDiagnostic>>(
         .into_iter()
         .filter_map(|(file_name, diagnostic)| {
             let original_content = std::fs::read(&file_name).ok()?;
-            let removed_unused = rust_delete(&original_content, diagnostic);
+            let removed_unused = rust_delete(
+                &original_content,
+                diagnostic.into_iter().map(|warn| (warn.kind, warn.ident)),
+            )
+            .expect("syntax error");
             let proposed_content = remove_empty_blocks(&removed_unused).expect("syntax error");
 
             let change = Change {
@@ -152,9 +161,7 @@ fn process_files<Iter: IntoIterator<Item = UnusedDiagnostic>>(
         })
 }
 
-/// Process a list of UnusedDiagnostics into an iterator of filenames+proposed
-/// contents
-/// BUGS: this does not check that the diagnostic is a "unused diagnostic"
+/// Process a list of UnusedDiagnostics into an iterator of filenames+proposed contents
 pub fn process_diagnostics(
     diagnostics: impl IntoIterator<Item = UnusedDiagnostic>,
 ) -> impl Iterator<Item = Change> {
@@ -239,65 +246,80 @@ pub fn commit_changes(
 mod test {
     use super::*;
 
+    fn fun(name: &str) -> (UnusedDiagnosticKind, String) {
+        (UnusedDiagnosticKind::Function, name.to_owned())
+    }
+
+    fn constant(name: &str) -> (UnusedDiagnosticKind, String) {
+        (UnusedDiagnosticKind::Constant, name.to_owned())
+    }
+
     #[test]
-    fn identifier_to_definition() {
-        let src = b"fn foo(); fn foo -> huk { barf; } constant FOO: i32 = 42;";
-        //          012345678901234567890123456789012345678901234567890123456
+    fn identifier_to_span() {
+        let src = b"fn foo() {}  fn foa() -> i32 { barf; } const FOO: i32 = 42;";
+        //          01234567890123456789012345678901234567890123456789012345678
         //                    1         2         3         4         5
-        let pos =
-            rust_identifiers_to_definitions(src, [0usize, 4usize, 12, 19, 40]).collect::<Vec<_>>();
-        assert_eq!(pos, vec![0..10, 0..10, 10..34, 10..34, 34..57]);
+        let pos = diagnostics_to_ranges(src, [fun("foo"), fun("foa"), constant("FOO")])
+            .unwrap()
+            .collect::<Vec<_>>();
+        assert_eq!(pos, vec![0..11, 13..38, 39..59]);
+    }
+
+    #[test]
+    fn chunk_deletion() {
+        let src = b"fn foo() {}  fn foa() -> i32 { barf; } const FOO: i32 = 42;";
+        //          012345678901234567890123456789012345678901234567890123456
+        assert_eq!(
+            delete_chunks(src, &[5..8]),
+            b"fn fo {}  fn foa() -> i32 { barf; } const FOO: i32 = 42;"
+        );
     }
 
     #[test]
     fn deletion() {
-        let src = b"fn foo(); fn foo -> huk { barf; } constant FOO: i32 = 42;";
-        //          012345678901234567890123456789012345678901234567890123456
-        //                    1         2         3         4         5
+        let src = b"fn foo() { }fn foa() -> i32 { barf; }const FOO: i32 = 42;";
         assert_eq!(
-            rust_delete(src, [2usize]),
-            b"fn foo -> huk { barf; } constant FOO: i32 = 42;"
+            rust_delete(src, [fun("foo")]).unwrap(),
+            //b"fn foa() -> huk { barf; } const FOO: i32 = 42;"
+            b"fn foa() -> i32 { barf; }const FOO: i32 = 42;"
         );
         assert_eq!(
-            rust_delete(src, [10usize]),
-            b"fn foo(); constant FOO: i32 = 42;"
+            rust_delete(src, [fun("foa")]).unwrap(),
+            b"fn foo() { }const FOO: i32 = 42;"
         );
         assert_eq!(
-            rust_delete(src, [40usize]),
-            b"fn foo(); fn foo -> huk { barf; } "
+            rust_delete(src, [constant("FOO")]).unwrap(),
+            b"fn foo() { }fn foa() -> i32 { barf; }"
         );
     }
 
     #[test]
     fn formatting_preserval() {
-        let src = b" fn foo();  fn foo  -> huk {  barf; }   constant FOO: i32 = 42;  fn bar(){ } ";
-        //          01234567890123456789012345678901234567890123456789012345678901234567890123456
-        //                    1         2         3         4         5         6
-        // 7
+        let src = b" fn foo(){}  fn foa()  -> huk {  barf; }   const FOO: i32 = 42;  fn bar(){ } ";
         assert_eq!(
-            rust_delete(src, [5usize]),
-            b"fn foo  -> huk {  barf; }   constant FOO: i32 = 42;  fn bar(){ } "
+            rust_delete(src, [fun("foo")]).unwrap(),
+            b" fn foa()  -> huk {  barf; }   const FOO: i32 = 42;  fn bar(){ } "
         );
         assert_eq!(
-            rust_delete(src, [15usize]),
-            b" fn foo();  constant FOO: i32 = 42;  fn bar(){ } "
+            rust_delete(src, [fun("foa")]).unwrap(),
+            b" fn foo(){}  const FOO: i32 = 42;  fn bar(){ } "
         );
         assert_eq!(
-            rust_delete(src, [42usize]),
-            b" fn foo();  fn foo  -> huk {  barf; }   fn bar(){ } "
+            rust_delete(src, [constant("FOO")]).unwrap(),
+            b" fn foo(){}  fn foa()  -> huk {  barf; }   fn bar(){ } "
         );
         assert_eq!(
-            rust_delete(src, [70usize]),
-            b" fn foo();  fn foo  -> huk {  barf; }   constant FOO: i32 = 42;  "
+            rust_delete(src, [fun("bar")]).unwrap(),
+            b" fn foo(){}  fn foa()  -> huk {  barf; }   const FOO: i32 = 42;  "
         );
 
         assert_eq!(
-            rust_delete(src, [5usize, 15]),
-            b"constant FOO: i32 = 42;  fn bar(){ } "
+            rust_delete(src, [fun("foa"), fun("foo")]).unwrap(),
+            b" const FOO: i32 = 42;  fn bar(){ } "
         );
         assert_eq!(
-            rust_delete(src, [15usize, 42usize]),
-            b" fn foo();  fn bar(){ } "
+            rust_delete(src, [fun("foa"), constant("FOO")]).unwrap(),
+            b" fn foo(){}  fn bar(){ } "
         );
     }
 
@@ -306,45 +328,44 @@ mod test {
     fn whitespace_semi_preserval() {
         let src = b" fn foo() {} fn fixme() {} fn main() {}";
         assert_eq!(
-            rust_delete(src, [15usize]),
+            rust_delete(src, [fun("fixme")]).unwrap(),
             b" fn foo() {} fn main() {}"
         );
         let src = b" fn foo() {} fn fixme() {}fn main() {}";
         assert_eq!(
-            rust_delete(src, [15usize]),
+            rust_delete(src, [fun("fixme")]).unwrap(),
             b" fn foo() {} fn main() {}"
         );
         let src = b" fn foo() {}fn fixme() {} fn main() {}";
         assert_eq!(
-            rust_delete(src, [15usize]),
+            rust_delete(src, [fun("fixme")]).unwrap(),
             b" fn foo() {}fn main() {}"
         );
         let src = b" fn foo() {}\nfn fixme() {}\nfn main() {}";
         assert_eq!(
-            rust_delete(src, [15usize]),
+            rust_delete(src, [fun("fixme")]).unwrap(),
             b" fn foo() {}\nfn main() {}"
         );
         let src = b" fn foo() {}\n\nfn fixme() {}\nfn main() {}";
         assert_eq!(
-            rust_delete(src, [15usize]),
+            rust_delete(src, [fun("fixme")]).unwrap(),
             b" fn foo() {}\n\nfn main() {}"
         );
         let src = b" fn foo() {}\nfn fixme() {}\n\nfn main() {}";
         assert_eq!(
-            rust_delete(src, [15usize]),
+            rust_delete(src, [fun("fixme")]).unwrap(),
             b" fn foo() {}\n\nfn main() {}"
         );
         let src = b" fn foo() {}\n\nfn fixme() {}\n\nfn main() {}";
         assert_eq!(
-            rust_delete(src, [15usize]),
+            rust_delete(src, [fun("fixme")]).unwrap(),
             b" fn foo() {}\n\n\nfn main() {}"
         );
 
         let src = b"fn foo() {}\n          fn fixme() {}\n   fn main() {}";
         assert_eq!(
-            rust_delete(src, [21usize]),
-            b"fn foo() {}\n            fn main() {}"
-
+            rust_delete(src, [fun("fixme")]).unwrap(),
+            b"fn foo() {}\n   fn main() {}"
         );
     }
 }
