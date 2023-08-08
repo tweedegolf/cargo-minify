@@ -213,8 +213,6 @@ fn remove_empty_blocks(bytes: &[u8]) -> Result<Vec<u8>, syn::Error> {
         })
         .collect();
 
-    println!("{:#?}", spans);
-
     Ok(delete_chunks(bytes, &spans))
 }
 
