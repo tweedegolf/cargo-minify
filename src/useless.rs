@@ -35,5 +35,11 @@ extern "C" {
     fn baz();
 }
 
+macro_rules! foo {
+    () => {
+        fn foo() {}
+    };
+}
+
 /// Let's finish with yet another extremely useful module.
 mod used_as_well {}

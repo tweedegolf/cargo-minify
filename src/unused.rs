@@ -82,57 +82,108 @@ impl TryFrom<Diagnostic> for UnusedDiagnostic {
     fn try_from(value: Diagnostic) -> Result<Self, Self::Error> {
         let message = value.message;
 
-        let (kind, mut message) = message.split_once(' ').ok_or(NotUnusedDiagnostic)?;
-        let kind = UnusedDiagnosticKind::from_str(kind)?;
+        let (first, message) = message.split_once(' ').ok_or(NotUnusedDiagnostic)?;
+        match UnusedDiagnosticKind::from_str(first) {
+            Ok(kind) => {
+                let message = match kind {
+                    UnusedDiagnosticKind::Constant
+                    | UnusedDiagnosticKind::Function
+                    | UnusedDiagnosticKind::Struct
+                    | UnusedDiagnosticKind::Enum
+                    | UnusedDiagnosticKind::Union => message,
+                    UnusedDiagnosticKind::TypeAlias => {
+                        let (alias, message) =
+                            message.split_once(' ').ok_or(NotUnusedDiagnostic)?;
 
-        message = match kind {
-            UnusedDiagnosticKind::Constant
-            | UnusedDiagnosticKind::Function
-            | UnusedDiagnosticKind::Struct
-            | UnusedDiagnosticKind::Enum
-            | UnusedDiagnosticKind::Union => message,
-            UnusedDiagnosticKind::TypeAlias => {
-                let (alias, message) = message.split_once(' ').ok_or(NotUnusedDiagnostic)?;
+                        if alias != "alias" {
+                            return Err(NotUnusedDiagnostic);
+                        }
 
-                if alias != "alias" {
+                        message
+                    }
+                    UnusedDiagnosticKind::AssociatedFunction => {
+                        let (function, message) =
+                            message.split_once(' ').ok_or(NotUnusedDiagnostic)?;
+
+                        if function != "function" {
+                            return Err(NotUnusedDiagnostic);
+                        }
+
+                        message
+                    }
+                    UnusedDiagnosticKind::MacroDefinition => return Err(NotUnusedDiagnostic),
+                };
+
+                let (mut ident, message) = message.split_once(' ').ok_or(NotUnusedDiagnostic)?;
+                ident = ident.strip_prefix('`').ok_or(NotUnusedDiagnostic)?;
+                ident = ident.strip_suffix('`').ok_or(NotUnusedDiagnostic)?;
+                let ident = ident.to_owned();
+
+                let suffix = match kind {
+                    UnusedDiagnosticKind::Constant
+                    | UnusedDiagnosticKind::Function
+                    | UnusedDiagnosticKind::Enum
+                    | UnusedDiagnosticKind::Union
+                    | UnusedDiagnosticKind::TypeAlias
+                    | UnusedDiagnosticKind::AssociatedFunction => "is never used",
+                    UnusedDiagnosticKind::Struct => "is never constructed",
+                    UnusedDiagnosticKind::MacroDefinition => return Err(NotUnusedDiagnostic),
+                };
+
+                if message != suffix {
                     return Err(NotUnusedDiagnostic);
                 }
 
-                message
-            }
-            UnusedDiagnosticKind::AssociatedFunction => {
-                let (alias, message) = message.split_once(' ').ok_or(NotUnusedDiagnostic)?;
+                let span = value.spans.into_iter().next().ok_or(NotUnusedDiagnostic)?;
 
-                if alias != "function" {
+                Ok(UnusedDiagnostic { kind, ident, span })
+            }
+            Err(_) => {
+                if first != "unused" {
                     return Err(NotUnusedDiagnostic);
                 }
 
-                message
+                let (mut kind, message) = message.split_once(' ').ok_or(NotUnusedDiagnostic)?;
+                kind = kind.strip_suffix(':').unwrap_or(kind);
+                let kind: UnusedDiagnosticKind = kind.parse()?;
+
+                let message = match kind {
+                    UnusedDiagnosticKind::Constant
+                    | UnusedDiagnosticKind::Function
+                    | UnusedDiagnosticKind::Struct
+                    | UnusedDiagnosticKind::Enum
+                    | UnusedDiagnosticKind::Union
+                    | UnusedDiagnosticKind::TypeAlias
+                    | UnusedDiagnosticKind::AssociatedFunction => return Err(NotUnusedDiagnostic),
+                    UnusedDiagnosticKind::MacroDefinition => {
+                        let (definition, message) =
+                            message.split_once(' ').ok_or(NotUnusedDiagnostic)?;
+
+                        if definition != "definition:" {
+                            return Err(NotUnusedDiagnostic);
+                        }
+
+                        message
+                    }
+                };
+
+                let mut split = message.splitn(2, ' ');
+                let mut ident = split.next().unwrap();
+                let message = split.next().unwrap_or_default();
+
+                ident = ident.strip_prefix('`').ok_or(NotUnusedDiagnostic)?;
+                ident = ident.strip_suffix('`').ok_or(NotUnusedDiagnostic)?;
+                let ident = ident.to_owned();
+
+                if !message.is_empty() {
+                    return Err(NotUnusedDiagnostic);
+                }
+
+                let span = value.spans.into_iter().next().ok_or(NotUnusedDiagnostic)?;
+
+                Ok(UnusedDiagnostic { kind, ident, span })
             }
-        };
-
-        let (mut ident, message) = message.split_once(' ').ok_or(NotUnusedDiagnostic)?;
-        ident = ident.strip_prefix('`').ok_or(NotUnusedDiagnostic)?;
-        ident = ident.strip_suffix('`').ok_or(NotUnusedDiagnostic)?;
-        let ident = ident.to_owned();
-
-        let suffix = match kind {
-            UnusedDiagnosticKind::Constant
-            | UnusedDiagnosticKind::Function
-            | UnusedDiagnosticKind::Enum
-            | UnusedDiagnosticKind::Union
-            | UnusedDiagnosticKind::TypeAlias
-            | UnusedDiagnosticKind::AssociatedFunction => "is never used",
-            UnusedDiagnosticKind::Struct => "is never constructed",
-        };
-
-        if message != suffix {
-            return Err(NotUnusedDiagnostic);
         }
-
-        let span = value.spans.into_iter().next().ok_or(NotUnusedDiagnostic)?;
-
-        Ok(UnusedDiagnostic { kind, ident, span })
     }
 }
 
@@ -145,6 +196,7 @@ pub enum UnusedDiagnosticKind {
     Union,
     TypeAlias,
     AssociatedFunction,
+    MacroDefinition,
 }
 
 impl FromStr for UnusedDiagnosticKind {
@@ -165,6 +217,7 @@ impl FromStr for UnusedDiagnosticKind {
             "union" => Ok(UnusedDiagnosticKind::Union),
             "type" | "typealias" => Ok(UnusedDiagnosticKind::TypeAlias),
             "associated" | "associatedfunction" => Ok(UnusedDiagnosticKind::AssociatedFunction),
+            "macro" | "macrodefinition" => Ok(UnusedDiagnosticKind::MacroDefinition),
             _ => Err(NotUnusedDiagnostic),
         }
     }
