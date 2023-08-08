@@ -3,6 +3,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use syn::{spanned::Spanned, File, Item};
+
 use crate::unused::UnusedDiagnostic;
 
 const SPACE: u8 = b' ';
@@ -103,8 +105,7 @@ fn rust_identifiers_to_definitions<'a>(
 /// Deletes a list-of-positions-of-identifiers from a bytearray that is valid
 /// rust code BUGS: if the position is in the body of a function, it will try to
 /// delete identifiers there ...  probably?
-pub fn rust_delete(src: &[u8], locations: impl IntoIterator<Item = usize>) -> Vec<u8> {
-    let chunks_to_delete = rust_identifiers_to_definitions(src, locations).collect::<Vec<_>>();
+pub fn delete_chunks(src: &[u8], chunks_to_delete: &[Range<usize>]) -> Vec<u8> {
     src.iter()
         .enumerate()
         .filter_map(|(i, &byte)| {
@@ -117,6 +118,14 @@ pub fn rust_delete(src: &[u8], locations: impl IntoIterator<Item = usize>) -> Ve
         .collect()
 }
 
+/// Deletes a list-of-positions-of-identifiers from a bytearray that is valid
+/// rust code BUGS: if the position is in the body of a function, it will try to
+/// delete identifiers there ...  probably?
+pub fn rust_delete(src: &[u8], locations: impl IntoIterator<Item = usize>) -> Vec<u8> {
+    let chunks_to_delete = rust_identifiers_to_definitions(src, locations).collect::<Vec<_>>();
+    delete_chunks(src, &chunks_to_delete)
+}
+
 /// Processes a list of file+list-of-edits into an iterator of
 /// filenames+proposed new contents
 fn process_files<Iter: IntoIterator<Item = usize>>(
@@ -126,7 +135,8 @@ fn process_files<Iter: IntoIterator<Item = usize>>(
         .into_iter()
         .filter_map(|(file_name, byte_locations)| {
             let original_content = std::fs::read(&file_name).ok()?;
-            let proposed_content = rust_delete(&original_content, byte_locations);
+            let removed_unused = rust_delete(&original_content, byte_locations);
+            let proposed_content = remove_empty_blocks(&removed_unused).expect("syntax error");
 
             let change = Change {
                 file_name,
@@ -156,6 +166,56 @@ pub fn process_diagnostics(
             .collect::<multimap::MultiMap<_, _>>()
             .into_iter(),
     )
+}
+
+/// Create a table of byte locations of newline symbols
+fn line_offsets(bytes: &[u8]) -> Vec<usize> {
+    let mut offsets: Vec<usize> = bytes
+        .iter()
+        .enumerate()
+        .filter_map(|(pos, b)| match b {
+            // TODO: Support \r\n
+            b'\n' => Some(pos + 1),
+            _ => None,
+        })
+        .collect();
+    // First line has no offset
+    offsets.insert(0, 0);
+    offsets
+}
+
+fn remove_empty_blocks(bytes: &[u8]) -> Result<Vec<u8>, syn::Error> {
+    let s = String::from_utf8_lossy(bytes).to_string();
+    let ast: File = syn::parse_str(&s)?;
+
+    let cumulative_lengths = line_offsets(bytes);
+
+    let spans: Vec<Range<usize>> = ast
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::ForeignMod(block) => {
+                (block.items.is_empty() && block.attrs.is_empty()).then(|| block.span())
+            }
+            Item::Impl(block) => {
+                (block.items.is_empty() && block.attrs.is_empty() && block.trait_.is_none())
+                    .then(|| block.span())
+            }
+            _ => None,
+        })
+        .map(|span| {
+            let start = span.start();
+            let end = span.end();
+            // TODO: Fragile af
+            let byte_start = cumulative_lengths[start.line - 1] + start.column;
+            let byte_end = cumulative_lengths[end.line - 1] + end.column;
+            byte_start..byte_end
+        })
+        .collect();
+
+    println!("{:#?}", spans);
+
+    Ok(delete_chunks(bytes, &spans))
 }
 
 /// DANGER

@@ -28,6 +28,8 @@ dependencies = [
  "gumdrop",
  "multimap",
  "nu-ansi-term",
+ "proc-macro2",
+ "syn 2.0.28",
  "thiserror",
 ]
 

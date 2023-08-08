@@ -5,8 +5,8 @@ use thiserror::Error;
 
 use crate::cauterize::Change;
 
-const BEFORE_CONTEXT: isize = 2;
-const AFTER_CONTEXT: isize = 2;
+const BEFORE_CONTEXT: isize = 3;
+const AFTER_CONTEXT: isize = 3;
 
 pub fn println(change: &Change, color_mode: ColorMode) {
     let text = format!("#\n#\tshowing diff for {:?}:\n#", change.file_name());
