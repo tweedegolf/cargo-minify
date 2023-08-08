@@ -57,6 +57,8 @@ pub fn get_unused<'a>(
         .filter(move |message| targets.contains(&message.target))
         .map(|message| message.message)
         .filter_map(|diagnostic| UnusedDiagnostic::try_from(diagnostic).ok())
+        // Ignore unused warnings originating from macro expansions
+        .filter(|diagnostic| diagnostic.span.expansion.is_none())
         .filter(|diagnostic| kinds.is_empty() || kinds.contains(&diagnostic.kind))
         .filter(|diagnostic| file_resolution.is_included(&diagnostic.span.file_name));
 

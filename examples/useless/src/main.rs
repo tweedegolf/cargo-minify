@@ -45,5 +45,14 @@ macro_rules! foo {
     };
 }
 
+macro_rules! huk {
+    () => {
+        fn huk() {}
+    };
+}
+
+/// The generated function is unused, but won't be removed by cargo-minify
+huk!();
+
 /// Let's finish with yet another extremely useful module.
 mod used_as_well {}
