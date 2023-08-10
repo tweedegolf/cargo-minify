@@ -186,8 +186,10 @@ fn line_offsets(bytes: &[u8]) -> Vec<usize> {
     offsets
 }
 
-fn byte_offset(offsets: &[usize], pos: &proc_macro2::LineColumn) -> usize {
-    offsets[pos.line - 1] + pos.column
+fn to_range(offsets: &[usize], span: &proc_macro2::Span) -> Range<usize> {
+    let byte_offset = |pos: proc_macro2::LineColumn| offsets[pos.line - 1] + pos.column;
+
+    byte_offset(span.start())..byte_offset(span.end())
 }
 
 fn remove_empty_blocks(bytes: &[u8]) -> Result<Vec<u8>, syn::Error> {
@@ -209,12 +211,7 @@ fn remove_empty_blocks(bytes: &[u8]) -> Result<Vec<u8>, syn::Error> {
             }
             _ => None,
         })
-        .map(|span| {
-            // TODO: Fragile af
-            let byte_start = byte_offset(&cumulative_lengths, &span.start());
-            let byte_end = byte_offset(&cumulative_lengths, &span.end());
-            byte_start..byte_end
-        })
+        .map(|span| to_range(&cumulative_lengths, &span))
         .collect();
 
     Ok(delete_chunks(bytes, &spans))
