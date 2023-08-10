@@ -70,7 +70,7 @@ fn diagnostics_to_ranges<'a>(
         .into_iter()
         .flat_map(move |(kind, ident)| {
             parsed.items.iter().find_map(|item| {
-                use syn::{ForeignItem, Item};
+                use syn::{ForeignItem, ImplItem, Item};
                 use UnusedDiagnosticKind::*;
                 let item_ident = match item {
                     Item::Const(obj) if kind == Constant => &obj.ident,
@@ -89,6 +89,22 @@ fn diagnostics_to_ranges<'a>(
                                 ForeignItem::Fn(obj) if kind == Function => &obj.sig.ident,
                                 ForeignItem::Static(obj) if kind == Static => &obj.ident,
                                 ForeignItem::Type(obj) if kind == TypeAlias => &obj.ident,
+                                _ => return None,
+                            };
+
+                            if *item_ident == ident {
+                                Some(item.span())
+                            } else {
+                                None
+                            }
+                        })
+                    }
+                    Item::Impl(block) => {
+                        return block.items.iter().find_map(|item| {
+                            let item_ident = match item {
+                                ImplItem::Const(obj) if kind == Constant => &obj.ident,
+                                ImplItem::Fn(obj) if kind == AssociatedFunction => &obj.sig.ident,
+                                ImplItem::Type(obj) if kind == TypeAlias => &obj.ident,
                                 _ => return None,
                             };
 
