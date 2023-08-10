@@ -121,21 +121,25 @@ pub fn delete_chunks(src: &[u8], chunks_to_delete: &[Range<usize>]) -> Vec<u8> {
 /// Deletes a list-of-positions-of-identifiers from a bytearray that is valid
 /// rust code BUGS: if the position is in the body of a function, it will try to
 /// delete identifiers there ...  probably?
-pub fn rust_delete(src: &[u8], locations: impl IntoIterator<Item = usize>) -> Vec<u8> {
+pub fn rust_delete(src: &[u8], diagnostics: impl IntoIterator<Item = UnusedDiagnostic>) -> Vec<u8> {
+    let locations = diagnostics
+        .into_iter()
+        .map(|diagnostic| diagnostic.span().byte_start as usize);
     let chunks_to_delete = rust_identifiers_to_definitions(src, locations).collect::<Vec<_>>();
+
     delete_chunks(src, &chunks_to_delete)
 }
 
 /// Processes a list of file+list-of-edits into an iterator of
 /// filenames+proposed new contents
-fn process_files<Iter: IntoIterator<Item = usize>>(
+fn process_files<Iter: IntoIterator<Item = UnusedDiagnostic>>(
     diagnostics: impl IntoIterator<Item = (PathBuf, Iter)>,
 ) -> impl Iterator<Item = Change> {
     diagnostics
         .into_iter()
-        .filter_map(|(file_name, byte_locations)| {
+        .filter_map(|(file_name, diagnostic)| {
             let original_content = std::fs::read(&file_name).ok()?;
-            let removed_unused = rust_delete(&original_content, byte_locations);
+            let removed_unused = rust_delete(&original_content, diagnostic);
             let proposed_content = remove_empty_blocks(&removed_unused).expect("syntax error");
 
             let change = Change {
@@ -149,8 +153,8 @@ fn process_files<Iter: IntoIterator<Item = usize>>(
 }
 
 /// Process a list of UnusedDiagnostics into an iterator of filenames+proposed
-/// contents BUGS: this does not check that the diagnostic is a "unused
-/// diagnostic"
+/// contents
+/// BUGS: this does not check that the diagnostic is a "unused diagnostic"
 pub fn process_diagnostics(
     diagnostics: impl IntoIterator<Item = UnusedDiagnostic>,
 ) -> impl Iterator<Item = Change> {
@@ -160,8 +164,7 @@ pub fn process_diagnostics(
             .map(|diagnostic| {
                 let span = diagnostic.span();
                 let path = PathBuf::from(&span.file_name);
-                let start = span.byte_start as usize;
-                (path, start)
+                (path, diagnostic)
             })
             .collect::<multimap::MultiMap<_, _>>()
             .into_iter(),
