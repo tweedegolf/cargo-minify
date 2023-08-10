@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use syn::{spanned::Spanned, File, Item};
+use syn::{spanned::Spanned, File};
 
 use crate::unused::{UnusedDiagnostic, UnusedDiagnosticKind};
 
@@ -229,10 +229,10 @@ fn remove_empty_blocks(bytes: &[u8]) -> Result<Vec<u8>, syn::Error> {
         .items
         .iter()
         .filter_map(|item| match item {
-            Item::ForeignMod(block) => {
+            syn::Item::ForeignMod(block) => {
                 (block.items.is_empty() && block.attrs.is_empty()).then(|| block.span())
             }
-            Item::Impl(block) => {
+            syn::Item::Impl(block) => {
                 (block.items.is_empty() && block.attrs.is_empty() && block.trait_.is_none())
                     .then(|| block.span())
             }
