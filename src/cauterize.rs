@@ -66,25 +66,28 @@ fn diagnostics_to_ranges<'a>(
 
     let cumulative_lengths = line_offsets(src);
 
-    let ranges = idents.into_iter().flat_map(move |diag| {
+    let ranges = idents.into_iter().flat_map(move |(kind, ident)| {
         parsed
             .items
             .iter()
             .filter_map(|item| {
+                use UnusedDiagnosticKind::*;
                 let item_ident = match item {
-                    syn::Item::Const(obj) => &obj.ident,
-                    syn::Item::Enum(obj) => &obj.ident,
-                    syn::Item::Fn(obj) => &obj.sig.ident,
-                    syn::Item::Macro(obj) if obj.ident.is_some() => obj.ident.as_ref().unwrap(),
-                    syn::Item::Static(obj) => &obj.ident,
-                    syn::Item::Struct(obj) => &obj.ident,
-                    syn::Item::Type(obj) => &obj.ident,
-                    syn::Item::Union(obj) => &obj.ident,
+                    syn::Item::Const(obj) if kind == Constant => &obj.ident,
+                    syn::Item::Enum(obj) if kind == Enum => &obj.ident,
+                    syn::Item::Fn(obj) if kind == Function => &obj.sig.ident,
+                    syn::Item::Macro(syn::ItemMacro {
+                        ident: Some(name), ..
+                    }) if kind == MacroDefinition => &name,
+                    syn::Item::Static(obj) if kind == todo!() => &obj.ident,
+                    syn::Item::Struct(obj) if kind == Struct => &obj.ident,
+                    syn::Item::Type(obj) if kind == TypeAlias => &obj.ident,
+                    syn::Item::Union(obj) if kind == Union => &obj.ident,
                     syn::Item::ForeignMod(obj) => todo!(),
                     _ => return None,
                 };
 
-                if *item_ident == diag.1 {
+                if *item_ident == ident {
                     Some(to_range(&cumulative_lengths, &item.span()))
                 } else {
                     None
@@ -280,7 +283,6 @@ mod test {
         let src = b"fn foo() { }fn foa() -> i32 { barf; }const FOO: i32 = 42;";
         assert_eq!(
             rust_delete(src, [fun("foo")]).unwrap(),
-            //b"fn foa() -> huk { barf; } const FOO: i32 = 42;"
             b"fn foa() -> i32 { barf; }const FOO: i32 = 42;"
         );
         assert_eq!(
@@ -290,6 +292,23 @@ mod test {
         assert_eq!(
             rust_delete(src, [constant("FOO")]).unwrap(),
             b"fn foo() { }fn foa() -> i32 { barf; }"
+        );
+    }
+
+    #[test]
+    fn type_check() {
+        let src = b"fn foo() { }fn foa() -> i32 { barf; }const FOO: i32 = 42;";
+        assert_eq!(
+            rust_delete(src, [constant("foo")]).unwrap(),
+            b"fn foo() { }fn foa() -> i32 { barf; }const FOO: i32 = 42;"
+        );
+        assert_eq!(
+            rust_delete(src, [constant("foa")]).unwrap(),
+            b"fn foo() { }fn foa() -> i32 { barf; }const FOO: i32 = 42;"
+        );
+        assert_eq!(
+            rust_delete(src, [fun("FOO")]).unwrap(),
+            b"fn foo() { }fn foa() -> i32 { barf; }const FOO: i32 = 42;"
         );
     }
 
