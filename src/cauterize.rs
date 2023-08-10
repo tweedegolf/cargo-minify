@@ -124,7 +124,7 @@ pub fn delete_chunks(src: &[u8], chunks_to_delete: &[Range<usize>]) -> Vec<u8> {
 pub fn rust_delete(src: &[u8], diagnostics: impl IntoIterator<Item = UnusedDiagnostic>) -> Vec<u8> {
     let locations = diagnostics
         .into_iter()
-        .map(|diagnostic| diagnostic.span().byte_start as usize);
+        .map(|diagnostic| diagnostic.span.byte_start as usize);
     let chunks_to_delete = rust_identifiers_to_definitions(src, locations).collect::<Vec<_>>();
 
     delete_chunks(src, &chunks_to_delete)
@@ -162,8 +162,7 @@ pub fn process_diagnostics(
         diagnostics
             .into_iter()
             .map(|diagnostic| {
-                let span = diagnostic.span();
-                let path = PathBuf::from(&span.file_name);
+                let path = PathBuf::from(&diagnostic.span.file_name);
                 (path, diagnostic)
             })
             .collect::<multimap::MultiMap<_, _>>()

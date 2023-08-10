@@ -67,15 +67,9 @@ pub fn get_unused<'a>(
 
 #[derive(Debug)]
 pub struct UnusedDiagnostic {
-    kind: UnusedDiagnosticKind,
-    ident: String,
-    span: DiagnosticSpan,
-}
-
-impl UnusedDiagnostic {
-    pub fn span(&self) -> &DiagnosticSpan {
-        &self.span
-    }
+    pub kind: UnusedDiagnosticKind,
+    pub ident: String,
+    pub span: DiagnosticSpan,
 }
 
 impl TryFrom<Diagnostic> for UnusedDiagnostic {
