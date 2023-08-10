@@ -83,6 +83,7 @@ impl TryFrom<Diagnostic> for UnusedDiagnostic {
             Ok(kind) => {
                 let message = match kind {
                     UnusedDiagnosticKind::Constant
+                    | UnusedDiagnosticKind::Static
                     | UnusedDiagnosticKind::Function
                     | UnusedDiagnosticKind::Struct
                     | UnusedDiagnosticKind::Enum
@@ -117,6 +118,7 @@ impl TryFrom<Diagnostic> for UnusedDiagnostic {
 
                 let suffix = match kind {
                     UnusedDiagnosticKind::Constant
+                    | UnusedDiagnosticKind::Static
                     | UnusedDiagnosticKind::Function
                     | UnusedDiagnosticKind::Enum
                     | UnusedDiagnosticKind::Union
@@ -145,6 +147,7 @@ impl TryFrom<Diagnostic> for UnusedDiagnostic {
 
                 let message = match kind {
                     UnusedDiagnosticKind::Constant
+                    | UnusedDiagnosticKind::Static
                     | UnusedDiagnosticKind::Function
                     | UnusedDiagnosticKind::Struct
                     | UnusedDiagnosticKind::Enum
@@ -186,6 +189,7 @@ impl TryFrom<Diagnostic> for UnusedDiagnostic {
 #[derive(Debug, PartialEq)]
 pub enum UnusedDiagnosticKind {
     Constant,
+    Static,
     Function,
     Struct,
     Enum,
@@ -207,6 +211,7 @@ impl FromStr for UnusedDiagnosticKind {
             .as_str()
         {
             "constant" => Ok(UnusedDiagnosticKind::Constant),
+            "static" => Ok(UnusedDiagnosticKind::Static),
             "function" => Ok(UnusedDiagnosticKind::Function),
             "struct" => Ok(UnusedDiagnosticKind::Struct),
             "enum" => Ok(UnusedDiagnosticKind::Enum),

@@ -37,8 +37,7 @@ struct MinifyOptions {
 
     #[options(
         help = "specify which kinds of diagnostics to apply (all by default)",
-        meta = "< CONST | FUNCTION | STRUCT | ENUM | UNION | TYPE_ALIAS | ASSOCIATED_FUNCTION | \
-                MACRO_DEFINITION >"
+        meta = "< FUNCTION | CONST | STATIC | STRUCT | ENUM | UNION | TYPE_ALIAS | ASSOCIATED_FUNCTION | MACRO_DEFINITION >"
     )]
     kinds: Vec<UnusedDiagnosticKind>,
 

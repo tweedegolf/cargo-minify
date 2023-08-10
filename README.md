@@ -20,11 +20,12 @@ You can perform a more precise minifcation by using the `--ignore` option, follo
 wildcard specification. Unused code in the excluded files will not be touched. You can also you
 the `--kinds` flag to specify which types of unused code to remove. Supported are:
 
-* `CONST`, which will remove unused constants
 * `FUNCTION`, which will remove unused function defintions
 * `ASSOCIATED_FUNCTION`, which will remove unused associated functions from `impl` blocks
 * `STRUCT`, `ENUM`, `UNION`, which will remove unused type definitions of said type
 * `TYPE_ALIAS`, which removes unused type aliases
+* `CONST`, which will remove unused constants
+* `STATIC`, which will remove unused static variables
 
 Without any `--kinds` specification, all of the above will be removed.
 

@@ -79,7 +79,7 @@ fn diagnostics_to_ranges<'a>(
                     Item::Macro(syn::ItemMacro {
                         ident: Some(name), ..
                     }) if kind == MacroDefinition => name,
-                    Item::Static(obj) if kind == todo!() => &obj.ident,
+                    Item::Static(obj) if kind == Static => &obj.ident,
                     Item::Struct(obj) if kind == Struct => &obj.ident,
                     Item::Type(obj) if kind == TypeAlias => &obj.ident,
                     Item::Union(obj) if kind == Union => &obj.ident,
@@ -87,7 +87,7 @@ fn diagnostics_to_ranges<'a>(
                         return block.items.iter().find_map(|item| {
                             let item_ident = match item {
                                 ForeignItem::Fn(obj) if kind == Function => &obj.sig.ident,
-                                ForeignItem::Static(obj) if kind == todo!() => &obj.ident,
+                                ForeignItem::Static(obj) if kind == Static => &obj.ident,
                                 ForeignItem::Type(obj) if kind == TypeAlias => &obj.ident,
                                 _ => return None,
                             };

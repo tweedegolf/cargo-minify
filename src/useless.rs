@@ -31,6 +31,8 @@ union Baz {
 
 type Qux = Bar;
 
+static FNORD: i8 = 4;
+
 extern "C" {
     fn baz();
 }
