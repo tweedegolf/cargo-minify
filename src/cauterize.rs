@@ -67,33 +67,29 @@ fn diagnostics_to_ranges<'a>(
     let cumulative_lengths = line_offsets(src);
 
     let ranges = idents.into_iter().flat_map(move |(kind, ident)| {
-        parsed
-            .items
-            .iter()
-            .filter_map(|item| {
-                use UnusedDiagnosticKind::*;
-                let item_ident = match item {
-                    syn::Item::Const(obj) if kind == Constant => &obj.ident,
-                    syn::Item::Enum(obj) if kind == Enum => &obj.ident,
-                    syn::Item::Fn(obj) if kind == Function => &obj.sig.ident,
-                    syn::Item::Macro(syn::ItemMacro {
-                        ident: Some(name), ..
-                    }) if kind == MacroDefinition => &name,
-                    syn::Item::Static(obj) if kind == todo!() => &obj.ident,
-                    syn::Item::Struct(obj) if kind == Struct => &obj.ident,
-                    syn::Item::Type(obj) if kind == TypeAlias => &obj.ident,
-                    syn::Item::Union(obj) if kind == Union => &obj.ident,
-                    syn::Item::ForeignMod(obj) => todo!(),
-                    _ => return None,
-                };
+        parsed.items.iter().find_map(|item| {
+            use UnusedDiagnosticKind::*;
+            let item_ident = match item {
+                syn::Item::Const(obj) if kind == Constant => &obj.ident,
+                syn::Item::Enum(obj) if kind == Enum => &obj.ident,
+                syn::Item::Fn(obj) if kind == Function => &obj.sig.ident,
+                syn::Item::Macro(syn::ItemMacro {
+                    ident: Some(name), ..
+                }) if kind == MacroDefinition => name,
+                syn::Item::Static(obj) if kind == todo!() => &obj.ident,
+                syn::Item::Struct(obj) if kind == Struct => &obj.ident,
+                syn::Item::Type(obj) if kind == TypeAlias => &obj.ident,
+                syn::Item::Union(obj) if kind == Union => &obj.ident,
+                syn::Item::ForeignMod(obj) => todo!(),
+                _ => return None,
+            };
 
-                if *item_ident == ident {
-                    Some(to_range(&cumulative_lengths, &item.span()))
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>()
+            if *item_ident == ident {
+                Some(to_range(&cumulative_lengths, &item.span()))
+            } else {
+                None
+            }
+        })
     });
 
     Ok(ranges)
