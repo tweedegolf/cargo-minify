@@ -23,10 +23,10 @@ pub fn get_targets(
     match crate_resolution {
         CrateResolutionOptions::Root => root_targets(manifest_path, &mut targets)?,
         CrateResolutionOptions::Workspace { exclude } => {
-            workspace_targets(manifest_path, *exclude, &mut targets, &mut BTreeSet::new())?
+            workspace_targets(manifest_path, exclude, &mut targets, &mut BTreeSet::new())?
         }
         CrateResolutionOptions::Package { packages } => {
-            package_targets(manifest_path, *packages, &mut targets)?
+            package_targets(manifest_path, packages, &mut targets)?
         }
     }
 

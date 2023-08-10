@@ -35,7 +35,7 @@ impl Change {
 /// Current heuristic:
 /// - if there is a newline, all space before it is related
 /// - if there is no newline, all whitespace is not related
-fn find_prefix_whitespace<'a>(src: &'a [u8]) -> usize {
+fn find_prefix_whitespace(src: &[u8]) -> usize {
     (0..src.len())
         .take_while(|&k| src[k].is_ascii_whitespace())
         .last()
@@ -48,7 +48,7 @@ fn find_prefix_whitespace<'a>(src: &'a [u8]) -> usize {
 /// Current heuristic:
 /// - if there is a newline, eat all space before it, and the newline
 /// - if there is no newline, eat all trailing whitespace until the next token
-fn find_suffix_whitespace<'a>(src: &'a [u8]) -> usize {
+fn find_suffix_whitespace(src: &[u8]) -> usize {
     src.iter()
         .position(|c| *c != SPACE)
         .map(|pos| if src[pos] == NEWLINE { pos + 1 } else { pos })
@@ -168,7 +168,8 @@ pub fn process_diagnostics(
     )
 }
 
-/// Create a table of byte locations of newline symbols
+/// Create a table of byte locations of newline symbols,
+/// to translate LineColumn's into exact offsets
 fn line_offsets(bytes: &[u8]) -> Vec<usize> {
     let mut offsets: Vec<usize> = bytes
         .iter()
@@ -181,7 +182,12 @@ fn line_offsets(bytes: &[u8]) -> Vec<usize> {
         .collect();
     // First line has no offset
     offsets.insert(0, 0);
+
     offsets
+}
+
+fn byte_offset(offsets: &[usize], pos: &proc_macro2::LineColumn) -> usize {
+    offsets[pos.line - 1] + pos.column
 }
 
 fn remove_empty_blocks(bytes: &[u8]) -> Result<Vec<u8>, syn::Error> {
@@ -204,11 +210,9 @@ fn remove_empty_blocks(bytes: &[u8]) -> Result<Vec<u8>, syn::Error> {
             _ => None,
         })
         .map(|span| {
-            let start = span.start();
-            let end = span.end();
             // TODO: Fragile af
-            let byte_start = cumulative_lengths[start.line - 1] + start.column;
-            let byte_end = cumulative_lengths[end.line - 1] + end.column;
+            let byte_start = byte_offset(&cumulative_lengths, &span.start());
+            let byte_end = byte_offset(&cumulative_lengths, &span.end());
             byte_start..byte_end
         })
         .collect();
@@ -216,7 +220,7 @@ fn remove_empty_blocks(bytes: &[u8]) -> Result<Vec<u8>, syn::Error> {
     Ok(delete_chunks(bytes, &spans))
 }
 
-/// DANGER
+/// This actually applies a collection of changes to your filesystem (use with care)
 pub fn commit_changes(
     changes: impl IntoIterator<Item = Change>,
 ) -> Result<(), Vec<std::io::Error>> {
