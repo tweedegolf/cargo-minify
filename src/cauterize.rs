@@ -66,47 +66,50 @@ fn diagnostics_to_ranges<'a>(
 
     let cumulative_lengths = line_offsets(src);
 
-    let ranges = idents.into_iter().flat_map(move |(kind, ident)| {
-        parsed.items.iter().find_map(|item| {
-            use syn::{ForeignItem, Item};
-            use UnusedDiagnosticKind::*;
-            let item_ident = match item {
-                Item::Const(obj) if kind == Constant => &obj.ident,
-                Item::Enum(obj) if kind == Enum => &obj.ident,
-                Item::Fn(obj) if kind == Function => &obj.sig.ident,
-                Item::Macro(syn::ItemMacro {
-                    ident: Some(name), ..
-                }) if kind == MacroDefinition => name,
-                Item::Static(obj) if kind == todo!() => &obj.ident,
-                Item::Struct(obj) if kind == Struct => &obj.ident,
-                Item::Type(obj) if kind == TypeAlias => &obj.ident,
-                Item::Union(obj) if kind == Union => &obj.ident,
-                Item::ForeignMod(block) => {
-                    return block.items.iter().find_map(|item| {
-                        let item_ident = match item {
-                            ForeignItem::Fn(obj) if kind == Function => &obj.sig.ident,
-                            ForeignItem::Static(obj) if kind == todo!() => &obj.ident,
-                            ForeignItem::Type(obj) if kind == TypeAlias => &obj.ident,
-                            _ => return None,
-                        };
+    let ranges = idents
+        .into_iter()
+        .flat_map(move |(kind, ident)| {
+            parsed.items.iter().find_map(|item| {
+                use syn::{ForeignItem, Item};
+                use UnusedDiagnosticKind::*;
+                let item_ident = match item {
+                    Item::Const(obj) if kind == Constant => &obj.ident,
+                    Item::Enum(obj) if kind == Enum => &obj.ident,
+                    Item::Fn(obj) if kind == Function => &obj.sig.ident,
+                    Item::Macro(syn::ItemMacro {
+                        ident: Some(name), ..
+                    }) if kind == MacroDefinition => name,
+                    Item::Static(obj) if kind == todo!() => &obj.ident,
+                    Item::Struct(obj) if kind == Struct => &obj.ident,
+                    Item::Type(obj) if kind == TypeAlias => &obj.ident,
+                    Item::Union(obj) if kind == Union => &obj.ident,
+                    Item::ForeignMod(block) => {
+                        return block.items.iter().find_map(|item| {
+                            let item_ident = match item {
+                                ForeignItem::Fn(obj) if kind == Function => &obj.sig.ident,
+                                ForeignItem::Static(obj) if kind == todo!() => &obj.ident,
+                                ForeignItem::Type(obj) if kind == TypeAlias => &obj.ident,
+                                _ => return None,
+                            };
 
-                        if *item_ident == ident {
-                            Some(to_range(&cumulative_lengths, &item.span()))
-                        } else {
-                            None
-                        }
-                    })
+                            if *item_ident == ident {
+                                Some(item.span())
+                            } else {
+                                None
+                            }
+                        })
+                    }
+                    _ => return None,
+                };
+
+                if *item_ident == ident {
+                    Some(item.span())
+                } else {
+                    None
                 }
-                _ => return None,
-            };
-
-            if *item_ident == ident {
-                Some(to_range(&cumulative_lengths, &item.span()))
-            } else {
-                None
-            }
+            })
         })
-    });
+        .map(move |span| to_range(&cumulative_lengths, span));
 
     Ok(ranges)
 }
@@ -210,7 +213,7 @@ fn line_offsets(bytes: &[u8]) -> Vec<usize> {
     offsets
 }
 
-fn to_range(offsets: &[usize], span: &proc_macro2::Span) -> Range<usize> {
+fn to_range(offsets: &[usize], span: proc_macro2::Span) -> Range<usize> {
     let byte_offset = |pos: proc_macro2::LineColumn| offsets[pos.line - 1] + pos.column;
 
     byte_offset(span.start())..byte_offset(span.end())
@@ -235,7 +238,7 @@ fn remove_empty_blocks(bytes: &[u8]) -> Result<Vec<u8>, syn::Error> {
             }
             _ => None,
         })
-        .map(|span| to_range(&cumulative_lengths, &span))
+        .map(|span| to_range(&cumulative_lengths, span))
         .collect();
 
     Ok(delete_chunks(bytes, &spans))
