@@ -63,7 +63,7 @@ struct MinifyOptions {
     allow_no_vcs: bool,
 }
 
-fn main() -> Result<()> {
+fn main() {
     // Drop the first actual argument if it is equal to our subcommand
     // (i.e. we are being called via 'cargo')
     let mut args = env::args().peekable();
@@ -73,15 +73,40 @@ fn main() -> Result<()> {
         args.next();
     }
 
-    execute(&args.collect::<Vec<_>>())?;
+    let mini_help = || {
+        eprintln!();
+        eprintln!("For more information, try '--help'");
+    };
 
-    io::stdout().flush()?;
+    let status_code = match execute(&args.collect::<Vec<_>>()) {
+        Err(Error::Io(err)) => {
+            eprintln!("IO error: {}", err);
+            3
+        }
+        Err(Error::Utf8(err)) => {
+            eprintln!("Encoding error: {}", err);
+            2
+        }
+        Err(Error::Args(err)) => {
+            eprintln!("error: {}", err);
+            mini_help();
+            1
+        }
+        Err(Error::CommandLine(err)) => {
+            eprintln!("error: {}", err);
+            mini_help();
+            1
+        }
+        _ => 0,
+    };
 
-    Ok(())
+    io::stdout().flush().unwrap();
+
+    std::process::exit(status_code);
 }
 
 fn execute(args: &[String]) -> Result<()> {
-    let opts = MinifyOptions::parse_args_default(args).expect("internal error");
+    let opts = MinifyOptions::parse_args_default(args)?;
     let manifest_path = opts.manifest_path.as_ref().map(PathBuf::from);
     let crate_resolution = CrateResolutionOptions::from_options(&opts)?;
     let file_resolution = FileResolutionOptions::from_options(&opts)?;
@@ -99,7 +124,7 @@ fn execute(args: &[String]) -> Result<()> {
 
         if !opts.quiet {
             if changes.is_empty() {
-                println!("no unused code that can be minified")
+                eprintln!("no unused code that can be minified")
             } else {
                 for change in &changes {
                     diff_format::println(change, opts.color);
@@ -144,7 +169,7 @@ fn execute(args: &[String]) -> Result<()> {
                 }
             }
         } else if !changes.is_empty() {
-            println!("run with --apply to apply these changes")
+            eprintln!("run with --apply to apply these changes")
         }
     }
 
