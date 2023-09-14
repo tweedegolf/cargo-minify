@@ -13,7 +13,6 @@ mod diff_format;
 mod error;
 mod resolver;
 mod unused;
-mod useless;
 mod vcs;
 
 const SUBCOMMAND_NAME: &str = "minify";
@@ -37,7 +36,8 @@ struct MinifyOptions {
 
     #[options(
         help = "specify which kinds of diagnostics to apply (all by default)",
-        meta = "< FUNCTION | CONST | STATIC | STRUCT | ENUM | UNION | TYPE_ALIAS | ASSOCIATED_FUNCTION | MACRO_DEFINITION >"
+        meta = "< FUNCTION | CONST | STATIC | STRUCT | ENUM | UNION | TYPE_ALIAS | \
+                ASSOCIATED_FUNCTION | MACRO_DEFINITION >"
     )]
     kinds: Vec<UnusedDiagnosticKind>,
 
