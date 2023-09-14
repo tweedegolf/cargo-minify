@@ -1,10 +1,10 @@
-[workspace]
-members = ["examples/*"]
-
 [package]
 name = "cargo-minify"
 version = "0.5.0"
 edition = "2021"
+
+[[example]]
+name = "useless"
 
 [dependencies]
 cargo_metadata = "0.17"
