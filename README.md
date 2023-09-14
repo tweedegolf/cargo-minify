@@ -9,10 +9,17 @@ but also usable in more general context.
   is explicitly allowed to be unused (using `#[allow(unused)]`).
 * `cargo check` (which `cargo minify` uses in the background) occasionally ignores unused definitions for some reason
 
+## Installation
+
+```shell
+git clone git@github.com:tweedegolf/cargo-minify.git
+cargo install --path cargo-minify
+```
+
 ## Usage
 
-After installation using `cargo install`, you can run this tool by simply typing `cargo minify` from
-your crate root.  This runs it on your project and will print out any changes that will be made to your code.
+After installation, you can run this tool by simply typing `cargo minify` from your crate root.
+This runs it on your project and will print out any changes that will be made to your code.
 
 To actually apply these changes, you have to run `cargo minify --apply`.
 
