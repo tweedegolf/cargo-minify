@@ -5,8 +5,8 @@ but also usable in more general context.
 
 ## Limitations
 
-* Public functions and types in libraries (which makes sense) but also in examples are not considered unused, as well as code that
-  is explicitly allowed to be unused (using `#[allow(unused)]`).
+* Public functions and types in libraries (which makes sense) but also in binaries and examples are not considered 
+  unused, as well as code that is explicitly allowed to be unused (using `#[allow(unused)]`).
 * `cargo check` (which `cargo minify` uses in the background) occasionally ignores unused definitions for some reason
 
 ## Installation
