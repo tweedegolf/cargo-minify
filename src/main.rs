@@ -169,7 +169,7 @@ fn execute(args: &[String]) -> Result<()> {
                 }
             }
         } else if !changes.is_empty() {
-            eprintln!("run with --apply to apply these changes")
+            println!("run with --apply to apply these changes")
         }
     }
 

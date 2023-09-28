@@ -30,7 +30,9 @@ pub fn get_targets(
         }
     }
 
-    eprintln!("crate resolution found no targets");
+    if targets.is_empty() {
+        eprintln!("crate resolution found no targets");
+    }
 
     Ok(targets)
 }
