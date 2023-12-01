@@ -206,8 +206,7 @@ pub fn process_diagnostics(
                 let path = PathBuf::from(&diagnostic.span.file_name);
                 (path, diagnostic)
             })
-            .collect::<multimap::MultiMap<_, _>>()
-            .into_iter(),
+            .collect::<multimap::MultiMap<_, _>>(),
     )
 }
 
@@ -299,6 +298,7 @@ mod test {
         assert_eq!(pos, vec![0..11, 13..38, 39..59]);
     }
 
+    #[allow(clippy::single_range_in_vec_init)]
     #[test]
     fn chunk_deletion() {
         let src = b"fn foo() {}  fn foa() -> i32 { barf; } const FOO: i32 = 42;";
