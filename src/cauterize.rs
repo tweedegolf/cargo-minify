@@ -240,7 +240,7 @@ fn remove_empty_blocks(bytes: &[u8]) -> Result<Vec<u8>, syn::Error> {
 
     let cumulative_lengths = line_offsets(bytes);
 
-    let spans: Vec<Range<usize>> = ast
+    let spans = ast
         .items
         .iter()
         .filter_map(|item| match item {
@@ -253,10 +253,12 @@ fn remove_empty_blocks(bytes: &[u8]) -> Result<Vec<u8>, syn::Error> {
             }
             _ => None,
         })
-        .map(|span| to_range(&cumulative_lengths, span))
-        .collect();
+        .map(|span| to_range(&cumulative_lengths, span));
 
-    Ok(delete_chunks(bytes, &spans))
+    let expanded_spans: Vec<Range<usize>> =
+        expand_ranges_to_include_whitespace(bytes, spans).collect();
+
+    Ok(delete_chunks(bytes, &expanded_spans))
 }
 
 /// This actually applies a collection of changes to your filesystem (use with care)
