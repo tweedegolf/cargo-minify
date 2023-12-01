@@ -1,7 +1,13 @@
 [package]
 name = "cargo-minify"
+description = "A cargo utility to automatically remove unused code from a Rust project."
+categories = [ "development-tools::cargo-plugins" ]
 version = "0.5.0"
+license = "Apache-2.0 OR MIT"
+repository = "https://github.com/tweedegolf/cargo-minify"
+homepage = "https://github.com/tweedegolf/cargo-minify"
 edition = "2021"
+publish = true
 
 [[example]]
 name = "useless"
