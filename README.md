@@ -11,8 +11,7 @@ as well as code that is explicitly allowed to be unused (using `#[allow(unused)]
 ## Installation
 
 ```shell
-git clone git@github.com:tweedegolf/cargo-minify.git
-cargo install --path cargo-minify
+cargo install --git https://tweedegolf/cargo-minify --branch main
 ```
 
 ## Usage
