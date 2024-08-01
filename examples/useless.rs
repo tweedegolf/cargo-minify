@@ -6,6 +6,16 @@ fn main() {
 /// is working properly.
 mod used {}
 
+/// This one is also used, but the function inside is unused.
+mod function_unused {
+    fn huk() {}
+
+    /// A mod inside a mod... inside a mod?
+    mod function_unused {
+        fn bar() {}
+    }
+}
+
 pub const BAR: &str = "Hello, world!";
 const FOO: usize = 5;
 
