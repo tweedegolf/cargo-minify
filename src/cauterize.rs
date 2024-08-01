@@ -131,6 +131,7 @@ fn diagnostics_to_ranges<'a>(
     Ok(ranges)
 }
 
+/// Handles (inline) module content
 fn handle_mod_diagnostic(block: &syn::ItemMod, kind: &UnusedDiagnosticKind, ident: &str) -> Option<proc_macro2::Span> {
     use syn::Item;
     use UnusedDiagnosticKind::*;
