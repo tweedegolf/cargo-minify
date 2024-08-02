@@ -136,7 +136,7 @@ fn handle_mod_diagnostic(block: &syn::ItemMod, kind: &UnusedDiagnosticKind, iden
     use syn::Item;
     use UnusedDiagnosticKind::*;
 
-    block.content.iter().find_map(|(b, items)| {
+    block.content.iter().find_map(|(_b, items)| {
         items.iter().find_map(|item| {
             let item_ident = match item {
                 Item::Fn(obj) if *kind == Function => &obj.sig.ident,
