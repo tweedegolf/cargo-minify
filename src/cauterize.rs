@@ -83,6 +83,7 @@ fn diagnostics_to_ranges<'a>(
                     Item::Struct(obj) if kind == Struct => &obj.ident,
                     Item::Type(obj) if kind == TypeAlias => &obj.ident,
                     Item::Union(obj) if kind == Union => &obj.ident,
+                    Item::Mod(block) => return handle_mod_diagnostic(block, &kind, &ident),
                     Item::ForeignMod(block) => {
                         return block.items.iter().find_map(|item| {
                             let item_ident = match item {
@@ -128,6 +129,30 @@ fn diagnostics_to_ranges<'a>(
         .map(move |span| to_range(&cumulative_lengths, span));
 
     Ok(ranges)
+}
+
+/// Handles (inline) module content
+fn handle_mod_diagnostic(block: &syn::ItemMod, kind: &UnusedDiagnosticKind, ident: &str) -> Option<proc_macro2::Span> {
+    use syn::Item;
+    use UnusedDiagnosticKind::*;
+
+    block.content.iter().find_map(|(_b, items)| {
+        items.iter().find_map(|item| {
+            let item_ident = match item {
+                Item::Fn(obj) if *kind == Function => &obj.sig.ident,
+                Item::Static(obj) if *kind == Static => &obj.ident,
+                Item::Type(obj) if *kind == TypeAlias => &obj.ident,
+                Item::Mod(obj) => return handle_mod_diagnostic(obj, kind, ident),
+                _ => return None,
+            };
+
+            if item_ident == ident {
+                Some(item.span())
+            } else {
+                None
+            }
+        })
+    })
 }
 
 fn expand_ranges_to_include_whitespace<'a>(
