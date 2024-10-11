@@ -1,6 +1,5 @@
 use std::str::FromStr;
 
-use nu_ansi_term::Color;
 use thiserror::Error;
 
 use crate::cauterize::Change;
@@ -11,7 +10,7 @@ const AFTER_CONTEXT: isize = 3;
 pub fn println(change: &Change, color_mode: ColorMode) {
     let text = format!("#\n#\tshowing diff for {:?}:\n#", change.file_name());
     if color_mode.enabled() {
-        println!("{}", Color::DarkGray.paint(text));
+        println!("\x1b[90m{text}\x1b[0m");
     } else {
         println!("{text}")
     }
@@ -47,17 +46,17 @@ pub fn println(change: &Change, color_mode: ColorMode) {
 
     for line in included {
         let (symbol, color, line) = match line {
-            DiffLine::Diff(diff::Result::Left(line)) => ('-', Color::LightRed, line),
-            DiffLine::Diff(diff::Result::Right(line)) => ('+', Color::LightGreen, line),
+            DiffLine::Diff(diff::Result::Left(line)) => ('-', "91", line),
+            DiffLine::Diff(diff::Result::Right(line)) => ('+', "92", line),
             DiffLine::Diff(diff::Result::Both(_, _)) => unreachable!(),
-            DiffLine::Context(line) => (' ', Color::Default, line),
-            DiffLine::Ellipsis => ('#', Color::DarkGray, "..."),
+            DiffLine::Context(line) => (' ', "39", line),
+            DiffLine::Ellipsis => ('#', "90", "..."),
         };
 
         let format = format!("{symbol}\t{line}");
 
         if color_mode.enabled() {
-            println!("{}", color.paint(format));
+            println!("\x1b[{color}m{format}\x1b[0m");
         } else {
             println!("{format}");
         }
