@@ -20,7 +20,7 @@ pub enum Status {
 // Copyright (c) 2016-2021 The Cargo Developers
 
 fn check_version_control(path: &Path) -> Status {
-    if !check_vcs::existing_vcs_repo(path, path) {
+    if !check_vcs::existing_vcs_repo(path) {
         return Status::NoVCS;
     }
 

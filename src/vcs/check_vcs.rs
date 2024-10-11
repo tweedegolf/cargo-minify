@@ -8,8 +8,8 @@ use std::path::Path;
 // 1. We are in a git repo and the path to the new package is not an ignored
 //    path in that repo.
 // 2. We are in an HG repo.
-pub fn existing_vcs_repo(path: &Path, cwd: &Path) -> bool {
-    in_git_repo(path) || hgrepo_discover(path, cwd).is_ok()
+pub fn existing_vcs_repo(path: &Path) -> bool {
+    in_git_repo(path) || hgrepo_discover(path).is_ok()
 }
 
 fn in_git_repo(path: &Path) -> bool {
@@ -25,9 +25,9 @@ fn in_git_repo(path: &Path) -> bool {
     }
 }
 
-fn hgrepo_discover(path: &Path, cwd: &Path) -> std::io::Result<()> {
+fn hgrepo_discover(path: &Path) -> std::io::Result<()> {
     std::process::Command::new("hg")
-        .current_dir(cwd)
+        .current_dir(path)
         .arg("--cwd")
         .arg(path)
         .arg("root")
