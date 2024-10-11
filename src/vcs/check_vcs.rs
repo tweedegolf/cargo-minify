@@ -13,16 +13,15 @@ pub fn existing_vcs_repo(path: &Path) -> bool {
 }
 
 fn in_git_repo(path: &Path) -> bool {
-    if let Ok(repo) = git2::Repository::discover(path) {
-        // Don't check if the working directory itself is ignored.
-        if repo.workdir().map_or(false, |workdir| workdir == path) {
-            true
-        } else {
-            !repo.is_path_ignored(path).unwrap_or(false)
-        }
-    } else {
-        false
-    }
+    std::process::Command::new("git")
+        .current_dir(path)
+        .arg("check-ignore")
+        .arg("-q")
+        .arg(".")
+        .status()
+        .map_or(false, |status| {
+            status.code() == Some(1) // status is 0 when ignored, 1 when not ignored and 128 when not a git repo
+        })
 }
 
 fn hgrepo_discover(path: &Path) -> std::io::Result<()> {
