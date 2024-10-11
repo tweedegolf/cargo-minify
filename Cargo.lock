@@ -26,7 +26,6 @@ dependencies = [
  "git2",
  "glob-match",
  "gumdrop",
- "multimap",
  "proc-macro2",
  "syn 2.0.39",
  "thiserror",
@@ -197,15 +196,6 @@ name = "log"
 version = "0.4.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b5e6163cb8c49088c2c36f57875e58ccd8c87c7427f7fbd50ea6710b2f3f2e8f"
-
-[[package]]
-name = "multimap"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e1a5d38b9b352dbd913288736af36af41c48d61b1a8cd34bcecd727561b7d511"
-dependencies = [
- "serde",
-]
 
 [[package]]
 name = "openssl-probe"

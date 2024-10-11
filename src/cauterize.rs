@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     ops::Range,
     path::{Path, PathBuf},
 };
@@ -132,7 +133,11 @@ fn diagnostics_to_ranges<'a>(
 }
 
 /// Handles (inline) module content
-fn handle_mod_diagnostic(block: &syn::ItemMod, kind: &UnusedDiagnosticKind, ident: &str) -> Option<proc_macro2::Span> {
+fn handle_mod_diagnostic(
+    block: &syn::ItemMod,
+    kind: &UnusedDiagnosticKind,
+    ident: &str,
+) -> Option<proc_macro2::Span> {
     use syn::Item;
     use UnusedDiagnosticKind::*;
 
@@ -224,15 +229,15 @@ fn process_files<Iter: IntoIterator<Item = UnusedDiagnostic>>(
 pub fn process_diagnostics(
     diagnostics: impl IntoIterator<Item = UnusedDiagnostic>,
 ) -> impl Iterator<Item = Change> {
-    process_files(
-        diagnostics
-            .into_iter()
-            .map(|diagnostic| {
-                let path = PathBuf::from(&diagnostic.span.file_name);
-                (path, diagnostic)
-            })
-            .collect::<multimap::MultiMap<_, _>>(),
-    )
+    let mut diagnostics_by_path: HashMap<PathBuf, Vec<UnusedDiagnostic>> = HashMap::new();
+    for diagnostic in diagnostics {
+        let path = PathBuf::from(&diagnostic.span.file_name);
+        diagnostics_by_path
+            .entry(path)
+            .or_default()
+            .push(diagnostic);
+    }
+    process_files(diagnostics_by_path)
 }
 
 /// Create a table of byte locations of newline symbols,
