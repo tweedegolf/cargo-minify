@@ -46,10 +46,11 @@ fn check_version_control(path: &Path) -> Status {
     let mut dirty = vec![];
     let mut staged = vec![];
     for line in String::from_utf8_lossy(&stdout).lines() {
-        if line.starts_with("M ") || line.starts_with("A ") {
-            staged.push(line[2..].to_owned());
-        } else if line.starts_with(" M") || line.starts_with("MM") || line.starts_with("??") {
-            dirty.push(line[2..].to_owned());
+        if line.chars().nth(1).unwrap() != ' ' {
+            // FIXME handle path names for renames
+            dirty.push(path_maybe_rename(&line[3..]));
+        } else if line.starts_with("M") || line.starts_with("A") || line.starts_with("R") {
+            staged.push(path_maybe_rename(&line[3..]));
         } else {
             return Status::Error(io::Error::new(
                 io::ErrorKind::Other,
@@ -63,4 +64,8 @@ fn check_version_control(path: &Path) -> Status {
     } else {
         Status::Unclean { dirty, staged }
     }
+}
+
+fn path_maybe_rename(s: &str) -> String {
+    s.split_once(" -> ").map(|(_from, to)| to).unwrap_or(s).to_owned()
 }
