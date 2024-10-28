@@ -21,7 +21,7 @@ pub fn get_unused<'a>(
 ) -> Result<impl Iterator<Item = UnusedDiagnostic> + 'a> {
     let mut command = Command::new("cargo");
 
-    command.args(["test", "--quiet", "--message-format", "json"]);
+    command.args(["check", "--all-targets", "--quiet", "--message-format", "json"]);
 
     match crate_resolution {
         CrateResolutionOptions::Root => {}
