@@ -1,3 +1,4 @@
+use std::io;
 use std::path::Path;
 
 mod check_vcs;
@@ -13,39 +14,48 @@ pub enum Status {
         staged: Vec<String>,
     },
     NoVCS,
-    Error(git2::Error),
+    Error(io::Error),
 }
 
-// Portions of the below code are inspired by/taken from Cargo, https://github.com/rust-lang/cargo/
-// Copyright (c) 2016-2021 The Cargo Developers
-
 fn check_version_control(path: &Path) -> Status {
-    if !check_vcs::existing_vcs_repo(path, path) {
+    if !check_vcs::existing_vcs_repo(path) {
         return Status::NoVCS;
     }
 
-    let mut dirty = Vec::new();
-    let mut staged = Vec::new();
-    if let Ok(repo) = git2::Repository::discover(path) {
-        let mut repo_opts = git2::StatusOptions::new();
-        repo_opts.include_ignored(false);
-        repo_opts.include_untracked(true);
-        let statuses = match repo.statuses(Some(&mut repo_opts)) {
-            Ok(value) => value,
-            Err(error) => return Status::Error(error),
-        };
-        for status in statuses.iter() {
-            if let Some(path) = status.path() {
-                match status.status() {
-                    git2::Status::CURRENT => (),
-                    git2::Status::INDEX_NEW
-                    | git2::Status::INDEX_MODIFIED
-                    | git2::Status::INDEX_DELETED
-                    | git2::Status::INDEX_RENAMED
-                    | git2::Status::INDEX_TYPECHANGE => staged.push(path.to_string()),
-                    _ => dirty.push(path.to_string()),
-                };
-            }
+    let output = match std::process::Command::new("git")
+        .current_dir(path)
+        .arg("status")
+        .arg("--porcelain=v1")
+        .output()
+    {
+        Ok(output) if output.status.success() => output,
+        Ok(output) => {
+            return Status::Error(io::Error::new(
+                io::ErrorKind::Other,
+                format!(
+                    "git status failed with exit code {}:\nstdout:\n{}\n\nstderr:\n{}",
+                    output.status,
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr),
+                ),
+            ))
+        }
+        Err(err) => return Status::Error(err),
+    };
+    let stdout = output.stdout;
+    let mut dirty = vec![];
+    let mut staged = vec![];
+    for line in String::from_utf8_lossy(&stdout).lines() {
+        if line.chars().nth(1).unwrap() != ' ' {
+            // FIXME handle path names for renames
+            dirty.push(path_maybe_rename(&line[3..]));
+        } else if line.starts_with("M") || line.starts_with("A") || line.starts_with("R") {
+            staged.push(path_maybe_rename(&line[3..]));
+        } else {
+            return Status::Error(io::Error::new(
+                io::ErrorKind::Other,
+                format!("git status returned invalid data: {line:?}"),
+            ));
         }
     }
 
@@ -54,4 +64,8 @@ fn check_version_control(path: &Path) -> Status {
     } else {
         Status::Unclean { dirty, staged }
     }
+}
+
+fn path_maybe_rename(s: &str) -> String {
+    s.split_once(" -> ").map(|(_from, to)| to).unwrap_or(s).to_owned()
 }

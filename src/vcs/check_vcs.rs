@@ -8,26 +8,25 @@ use std::path::Path;
 // 1. We are in a git repo and the path to the new package is not an ignored
 //    path in that repo.
 // 2. We are in an HG repo.
-pub fn existing_vcs_repo(path: &Path, cwd: &Path) -> bool {
-    in_git_repo(path) || hgrepo_discover(path, cwd).is_ok()
+pub fn existing_vcs_repo(path: &Path) -> bool {
+    in_git_repo(path) || hgrepo_discover(path).is_ok()
 }
 
 fn in_git_repo(path: &Path) -> bool {
-    if let Ok(repo) = git2::Repository::discover(path) {
-        // Don't check if the working directory itself is ignored.
-        if repo.workdir().map_or(false, |workdir| workdir == path) {
-            true
-        } else {
-            !repo.is_path_ignored(path).unwrap_or(false)
-        }
-    } else {
-        false
-    }
+    std::process::Command::new("git")
+        .current_dir(path)
+        .arg("check-ignore")
+        .arg("-q")
+        .arg(".")
+        .status()
+        .map_or(false, |status| {
+            status.code() == Some(1) // status is 0 when ignored, 1 when not ignored and 128 when not a git repo
+        })
 }
 
-fn hgrepo_discover(path: &Path, cwd: &Path) -> std::io::Result<()> {
+fn hgrepo_discover(path: &Path) -> std::io::Result<()> {
     std::process::Command::new("hg")
-        .current_dir(cwd)
+        .current_dir(path)
         .arg("--cwd")
         .arg(path)
         .arg("root")
